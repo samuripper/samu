@@ -949,7 +949,7 @@ macosx-x86-64-opencl:
 	$(LN) x86-64.h arch.h
 	@echo "#define JOHN_BLD" '"'$@'"' > john_build_rule.h
 	$(MAKE) $(PROJ) \
-		JOHN_OBJS="$(JOHN_OBJS) $(OCL_OBJS) x86-64.o sse-intrinsics-64.o" \
+		JOHN_OBJS="$(JOHN_OBJS) $(OCL_OBJS) x86-64.o sse-intrinsics.o" \
 		ASFLAGS="$(ASFLAGS) -m64 -DUNDERSCORES -DBSD -DALIGN_LOG" \
 		CFLAGS="$(CFLAGS) -m64  -I$(OCLROOT)/include -I$(OCLROOT)/include  -DBSD -DCL_VERSION_1_0" \
 		LDFLAGS="$(LDFLAGS) -m64 -L$(OCLROOT)/lib/x86_64 -L$(NVIDIA_CUDA)/lib64 -framework OpenCL"
