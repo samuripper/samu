@@ -60,9 +60,8 @@ typedef struct {
 #define NSLDAP_MAGIC "{ssha}"
 #define NSLDAP_MAGIC_LENGTH 6
 
-cl_command_queue queue_prof;
-cl_mem pinned_saved_keys, pinned_partial_hashes, buffer_out, buffer_keys,
-    len_buffer, data_info, mysalt, mycrypt;
+static cl_command_queue queue_prof;
+static cl_mem pinned_saved_keys, pinned_partial_hashes, buffer_out, buffer_keys, data_info, mysalt;
 static cl_uint *outbuffer;
 static cl_uint *outbuffer2;
 static char *saved_plain;
@@ -103,7 +102,7 @@ static void find_best_workgroup(void)
 	size_t my_work_group = 1;
 	cl_int ret_code;
 	int i = 0;
-	size_t max_group_size;
+	size_t max_group_size, best_multiple;
 
 	clGetDeviceInfo(devices[gpu_id], CL_DEVICE_MAX_WORK_GROUP_SIZE,
 	    sizeof(max_group_size), &max_group_size, NULL);
@@ -124,9 +123,26 @@ static void find_best_workgroup(void)
 	clEnqueueWriteBuffer(queue_prof, buffer_keys, CL_TRUE, 0,
 	    (PLAINTEXT_LENGTH) * SSHA_NUM_KEYS, saved_plain, 0, NULL, NULL);
 
+
+ 	// This is OpenCL 1.1, we catch CL_INVALID_VALUE and use a fallback
+	ret_code = clGetKernelWorkGroupInfo (crypt_kernel, devices[gpu_id],
+		CL_KERNEL_PREFERRED_WORK_GROUP_SIZE_MULTIPLE,
+		sizeof(best_multiple), &best_multiple, NULL);
+
+	if (ret_code == CL_INVALID_VALUE) {
+		//printf("Can't get preferred LWS multiple, using 1\n");
+		best_multiple = 1;
+	} else {
+		HANDLE_CLERROR(ret_code, "Query preferred work group multiple");
+		//printf("preferred multiple: %zu\n", best_multiple);
+	}
+
 	// Find minimum time
-	for (my_work_group = 1; (int) my_work_group <= (int) max_group_size;
-	    my_work_group *= 2) {
+	//for (my_work_group = 1; (int) my_work_group <= (int) max_group_size;
+	//    my_work_group *= 2) {
+  	// Find minimum time
+ 	for (my_work_group = best_multiple; (int) my_work_group <= (int) max_group_size;
+  	    my_work_group *= 2) {
 		ret_code = clEnqueueNDRangeKernel(queue_prof, crypt_kernel, 1,
 		    NULL, &global_work_size, &my_work_group, 0, NULL, &myEvent);
 		if (ret_code != CL_SUCCESS) {
@@ -160,7 +176,7 @@ static void find_best_workgroup(void)
 
 static void create_clobj(int kpc){
 	pinned_saved_keys = clCreateBuffer(context[gpu_id], CL_MEM_READ_WRITE | CL_MEM_ALLOC_HOST_PTR, (PLAINTEXT_LENGTH) * kpc, NULL, &ret_code);
-	HANDLE_CLERROR(ret_code, "Error creating page-locked memory");
+	HANDLE_CLERROR(ret_code, "Error creating page-locked memory pinned_saved_keys");
 
 	saved_plain = (char*)clEnqueueMapBuffer(queue[gpu_id], pinned_saved_keys, CL_TRUE, CL_MAP_WRITE | CL_MAP_READ,
 			 0, (PLAINTEXT_LENGTH) * kpc, 0, NULL, NULL, &ret_code);
@@ -250,7 +266,8 @@ static void find_best_kpc(void){
     cl_uint *tmpbuffer;
 
     printf("Calculating best keys per crypt, this will take a while ");
-    for( num=SSHA_NUM_KEYS; num > 4096 ; num -= 16384){
+    //for( num=SSHA_NUM_KEYS; num > 4096 ; num -= 16384){
+    for( num=local_work_size; num <= SSHA_NUM_KEYS ; num<<=1){
         release_clobj();
 	create_clobj(num);
 	advance_cursor();

@@ -45,10 +45,10 @@ typedef struct {
 } SHA_DEV_CTX;
 
 
-cl_command_queue queue_prof;
+static cl_command_queue queue_prof;
 cl_int ret_code;
-cl_kernel crypt_kernel;
-cl_mem pinned_saved_keys, pinned_partial_hashes, buffer_out, buffer_keys, data_info;
+//static cl_kernel crypt_kernel;
+static cl_mem pinned_saved_keys, pinned_partial_hashes, buffer_out, buffer_keys, data_info;
 static cl_uint *partial_hashes;
 static cl_uint *res_hashes;
 static char *saved_plain;

@@ -26,8 +26,8 @@
 #define BINARY_SIZE         16
 #define SALT_SIZE           0
 
-cl_command_queue queue_prof;
-cl_mem pinned_saved_keys, pinned_partial_hashes, buffer_out, buffer_keys, data_info;
+static cl_command_queue queue_prof;
+static cl_mem pinned_saved_keys, pinned_partial_hashes, buffer_out, buffer_keys, data_info;
 static cl_uint *partial_hashes;
 static cl_uint *res_hashes;
 static char *saved_plain;

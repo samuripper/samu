@@ -31,23 +31,14 @@
 #define BINARY_SIZE			20
 #define SALT_SIZE			0
 
-#define SHA_NUM_KEYS               	1024*2048
+#define SHA_NUM_KEYS               	1024*2048*2
 
 #define MIN_KEYS_PER_CRYPT		2048
 #define MAX_KEYS_PER_CRYPT		SHA_NUM_KEYS
 
-#ifndef uint32_t
-#define uint32_t unsigned int
-#endif
-
-typedef struct {
-	uint32_t h0,h1,h2,h3,h4;
-} SHA_DEV_CTX;
-
-
-cl_command_queue queue_prof;
+static cl_command_queue queue_prof;
 cl_int ret_code;
-cl_mem pinned_msha_keys, pin_part_msha_hashes, buf_msha_out, buf_msha_keys, data_info;
+static cl_mem pinned_msha_keys, pin_part_msha_hashes, buf_msha_out, buf_msha_keys, data_info;
 static cl_uint *par_msha_hashes;
 static cl_uint *res_hashes;
 static char *mysqlsha_plain;
@@ -110,14 +101,14 @@ static void find_best_workgroup(void){
 			local_work_size = my_work_group;
 		}
 	}
-	printf("Optimal local work size %d\n",(int)local_work_size);
-        printf("(to avoid this test on next run do export LWS=%d)\n",(int)local_work_size);
+	//printf("Optimal local work size %d\n",(int)local_work_size);
+        //printf("(to avoid this test on next run do export LWS=%d)\n",(int)local_work_size);
 	clReleaseCommandQueue(queue_prof);
 }
 
 static void create_clobj(int kpc){
     pinned_msha_keys = clCreateBuffer(context[gpu_id], CL_MEM_READ_WRITE | CL_MEM_ALLOC_HOST_PTR, (PLAINTEXT_LENGTH)*kpc, NULL, &ret_code);
-    HANDLE_CLERROR(ret_code, "Error creating page-locked memory");
+    HANDLE_CLERROR(ret_code, "Error creating page-locked memory pinned_msha_keys");
     mysqlsha_plain = (char*)clEnqueueMapBuffer(queue[gpu_id], pinned_msha_keys, CL_TRUE, CL_MAP_WRITE | CL_MAP_READ, 0, (PLAINTEXT_LENGTH)*kpc, 0, NULL, NULL, &ret_code);
     HANDLE_CLERROR(ret_code, "Error mapping page-locked memory mysqlsha_plain");
     memset(mysqlsha_plain, 0, PLAINTEXT_LENGTH * kpc);
@@ -174,7 +165,8 @@ static void find_best_kpc(void){
     cl_uint *tmpbuffer;
 
     printf("Calculating best keys per crypt, this will take a while ");
-    for( num=SHA_NUM_KEYS; num > 4096 ; num -= 4096){
+    //for( num=SHA_NUM_KEYS; num > 4096 ; num -= 16384 ){
+    for( num=local_work_size; num <= SHA_NUM_KEYS ; num<<=1){
         release_clobj();
 	create_clobj(num);
 	advance_cursor();
@@ -205,7 +197,7 @@ static void find_best_kpc(void){
 	free(tmpbuffer);
     	clReleaseCommandQueue(queue_prof);
     }
-    printf("Optimal keys per crypt %d\n(to avoid this test on next run do export KPC=%d)\n",optimal_kpc,optimal_kpc);
+    //printf("Optimal keys per crypt %d\n(to avoid this test on next run do export KPC=%d)\n",optimal_kpc,optimal_kpc);
     max_keys_per_crypt = optimal_kpc;
     release_clobj();
     create_clobj(optimal_kpc);
@@ -334,7 +326,6 @@ static int cmp_one(void *binary, int index){
 }
 
 static void crypt_all(int count) {
-        //memcpy(mysqlsha_plain,saved_key,PLAINTEXT_LENGTH*count);
 	HANDLE_CLERROR(
 	    clEnqueueWriteBuffer(queue[gpu_id], data_info, CL_TRUE, 0,
 	    sizeof(unsigned int) * 2, datai, 0, NULL, NULL),
