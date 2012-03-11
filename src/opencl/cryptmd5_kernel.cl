@@ -6,10 +6,12 @@
 #define uint32_t	unsigned int
 #define uint8_t		unsigned char
 
-#define ROTATE_LEFT(x, s) ((x << s) | (x >> (32 - s)))
+#define ROTATE_LEFT(x, s) rotate(x,s)
 
-#define F(x, y, z) (x&y | ~x&z)
-#define G(x, y, z) (x&z | y&~z)
+//#define F(x, y, z)	((z) ^ ((x) & ((y) ^ (z))))
+//#define G(x, y, z)	((y) ^ ((z) & ((x) ^ (y))))
+#define F(x, y, z) bitselect((z), (y), (x))
+#define G(x, y, z) bitselect((y), (x), (z))
 
 #define H(x, y, z) (x^y^z)
 #define I(x, y, z) (y^(x|~z))
@@ -48,6 +50,13 @@
 #define S43 		15
 #define S44 		21
 
+#define AC1				0xd76aa477
+#define AC2pCd				0xf8fa0bcc
+#define AC3pCc				0xbcdb4dd9
+#define AC4pCb				0xb18b7a77
+#define MASK1				0x77777777
+
+
 typedef struct {
 	uint8_t saltlen;
 	uint8_t salt[8];
@@ -66,9 +75,6 @@ typedef struct {
 typedef struct {
 #define ctx_buffsize 64
 	uint8_t buffer[ctx_buffsize];
-	uint32_t buflen;
-	uint32_t len;
-	uint32_t A, B, C, D;
 } md5_ctx;
 
 
@@ -76,68 +82,79 @@ __constant uint8_t cl_md5_salt_prefix[] = "$1$";
 __constant uint8_t cl_apr1_salt_prefix[] = "$apr1$";
 
 void ctx_update_global(__private md5_ctx * ctx, __global uint8_t * string,
-    size_t len)
+    size_t len,uint8_t *ctx_buflen)
 {
-	uint8_t *dest = &ctx->buffer[ctx->buflen];
-	__global uint8_t *src = string;
-	ctx->buflen += len;
+	uint8_t *dest = &ctx->buffer[*ctx_buflen];
+	*ctx_buflen += len;
 	int i = len;
 	for (i = 0; i < len; i++)
-		dest[i] = src[i];
+		dest[i] = string[i];
 }
 
 void ctx_update_private(__private md5_ctx * ctx, __private uint8_t * string,
-    size_t len)
+    size_t len,uint8_t *ctx_buflen)
 {
-	uint8_t *dest = &ctx->buffer[ctx->buflen];
-	__private uint8_t *src = string;
-	ctx->buflen += len;
-	int i = len;
-	for (i = 0; i < len; i++)
-		dest[i] = src[i];
+	uint8_t *dest = &ctx->buffer[*ctx_buflen];
+	*ctx_buflen += len;
+	while(len--)
+	  *dest++=*string++;
+}
+void ctx_insert_result(__private md5_ctx * ctx, __private uint8_t * string,uint8_t start)
+{
+	uint8_t *dest = &ctx->buffer[start];
+	int i;
+	for (i = 0; i < 16; i++)
+		dest[i] = string[i];
 }
 
-void ctx_update_prefix(__private md5_ctx * ctx, uint8_t prefix)
+void ctx_update_prefix(__private md5_ctx * ctx, uint8_t prefix,uint8_t *ctx_buflen)
 {
-	uint8_t i, *dest = &ctx->buffer[ctx->buflen];
+	uint8_t i, *dest = &ctx->buffer[*ctx_buflen];
 	if (prefix == '1') {
-		ctx->buflen += 3;
+		*ctx_buflen += 3;
 		for (i = 0; i < 3; i++)
 			dest[i] = cl_md5_salt_prefix[i];
 	} else {
-		ctx->buflen += 6;
+		*ctx_buflen += 6;
 		for (i = 0; i < 6; i++)
 			dest[i] = cl_apr1_salt_prefix[i];
 	}
 }
 
 
-void init_ctx(__private md5_ctx * ctx)
+void init_ctx(__private md5_ctx * ctx,uint8_t *ctx_buflen)
 {
-	int i = ctx_buffsize / sizeof(uint32_t);
+	int i = ctx_buffsize / sizeof(uint32_t)-2;
 	uint32_t *buf = (uint32_t *) ctx->buffer;
 	while (i--)
 		*buf++ = 0;
-	ctx->buflen = 0;
-	ctx->len = 0;
+	*ctx_buflen = 0;
 }
 
-void md5_block(__private md5_ctx * ctx, uint32_t blocks, size_t len)
+
+
+void md5_digest(__private md5_ctx * ctx, __private uint32_t * result,uint8_t *ctx_buflen)
 {
-	uint32_t a = 0x67452301;
+	uint32_t len = *ctx_buflen;
+	uint32_t *x = (uint32_t *) ctx->buffer;
+	uint32_t i = len % 64;
+	x[i / 4] |= (((uint32_t) 0x80) << ((i & 0x3) << 3));
+
+	uint32_t a;
 	uint32_t b = 0xefcdab89;
 	uint32_t c = 0x98badcfe;
 	uint32_t d = 0x10325476;
 
-	ctx->len += len;
 	len <<= 3;
-	__private uint32_t *x = (uint32_t *) & ctx->buffer[0];
-
 	{
-		FF(a, b, c, d, x[0], S11, 0xd76aa478);	/* 1 */
-		FF(d, a, b, c, x[1], S12, 0xe8c7b756);	/* 2 */
-		FF(c, d, a, b, x[2], S13, 0x242070db);	/* 3 */
-		FF(b, c, d, a, x[3], S14, 0xc1bdceee);	/* 4 */
+	a = ROTATE_LEFT(AC1 + x[0], S11);
+	a += b;			/* 1 */
+	d = ROTATE_LEFT((c ^ (a & MASK1)) + x[1] + AC2pCd, S12);
+	d += a;			/* 2 */
+	c = ROTATE_LEFT(F(d, a, b) + x[2] + AC3pCc, S13);
+	c += d;			/* 3 */
+	b = ROTATE_LEFT(F(c, d, a) + x[3] + AC4pCb, S14);
+	b += c;			/* 4 */
 		FF(a, b, c, d, x[4], S11, 0xf57c0faf);	/* 5 */
 		FF(d, a, b, c, x[5], S12, 0x4787c62a);	/* 6 */
 		FF(c, d, a, b, x[6], S13, 0xa8304613);	/* 7 */
@@ -205,99 +222,84 @@ void md5_block(__private md5_ctx * ctx, uint32_t blocks, size_t len)
 		II(c, d, a, b, x[2], S43, 0x2ad7d2bb);	/* 63 */
 		II(b, c, d, a, x[9], S44, 0xeb86d391);	/* 64 */
 	}
-	ctx->A = a + 0x67452301;
-	ctx->B = b + 0xefcdab89;
-	ctx->C = c + 0x98badcfe;
-	ctx->D = d + 0x10325476;
-}
-
-
-void md5_digest(__private md5_ctx * ctx, __private uint32_t * result)
-{
-	uint32_t len = ctx->buflen, blocks = 1;
-	uint32_t *x = (uint32_t *) ctx->buffer;
-	uint32_t i = len % 64;
-	x[i / 4] |= (((uint32_t) 0x80) << ((i & 0x3) << 3));
-
-	md5_block(ctx, blocks, len);
-
-	result[0] = ctx->A;
-	result[1] = ctx->B;
-	result[2] = ctx->C;
-	result[3] = ctx->D;
+	result[0] = a + 0x67452301;
+	result[1] = b + 0xefcdab89;
+	result[2] = c + 0x98badcfe;
+	result[3] = d + 0x10325476;
 }
 
 __kernel void cryptmd5
     (__global const crypt_md5_password * inbuffer,
-    __global crypt_md5_hash * outbuffer,
+    __global uint32_t * outbuffer,
     __global const crypt_md5_salt * hsalt) {
 	uint32_t idx = get_global_id(0);
 	uint32_t i;
 	__global const uint8_t *pass = inbuffer[idx].v;
-	__global uint32_t *tresult = outbuffer[idx].v;
 
 	__private uint32_t alt_result[4];
 	uint8_t pass_len = inbuffer[idx].length;
 	uint8_t salt_len = hsalt->saltlen;
 	const __global uint8_t *salt = hsalt->salt;
 
-	__private md5_ctx ctx, alt_ctx;
-	init_ctx(&ctx);
-	init_ctx(&alt_ctx);
+	__private md5_ctx ctx;
+	uint8_t ctx_buflen;
+	init_ctx(&ctx,&ctx_buflen);
+	ctx_update_global(&ctx, (__global uint8_t *) pass, pass_len,&ctx_buflen);
+	ctx_update_global(&ctx, (__global uint8_t *) salt, salt_len,&ctx_buflen);
+	ctx_update_global(&ctx, (__global uint8_t *) pass, pass_len,&ctx_buflen);
+	md5_digest(&ctx, alt_result,&ctx_buflen);
 
-	ctx_update_global(&ctx, (__global uint8_t *) pass, pass_len);
-	ctx_update_prefix(&ctx, hsalt->prefix);
-	ctx_update_global(&ctx, (__global uint8_t *) salt, salt_len);
-
-	ctx_update_global(&alt_ctx, (__global uint8_t *) pass, pass_len);
-	ctx_update_global(&alt_ctx, (__global uint8_t *) salt, salt_len);
-	ctx_update_global(&alt_ctx, (__global uint8_t *) pass, pass_len);
-	md5_digest(&alt_ctx, alt_result);
+	init_ctx(&ctx,&ctx_buflen);
+	ctx_update_global(&ctx, (__global uint8_t *) pass, pass_len,&ctx_buflen);
+	ctx_update_prefix(&ctx, hsalt->prefix,&ctx_buflen);
+	ctx_update_global(&ctx, (__global uint8_t *) salt, salt_len,&ctx_buflen);
 
 	for (i = pass_len; i > 16; i -= 16)
-		ctx_update_private(&ctx, (uint8_t *) alt_result, 16);
-	ctx_update_private(&ctx, (uint8_t *) alt_result, i);
+		ctx_update_private(&ctx, (uint8_t *) alt_result, 16,&ctx_buflen);
+	ctx_update_private(&ctx, (uint8_t *) alt_result, i,&ctx_buflen);
 
 
 	*alt_result = 0;
 
 	for (i = pass_len; i > 0; i >>= 1)
 		if ((i & 1) != 0)
-			ctx.buffer[ctx.buflen++] = ((char *) alt_result)[0];
+			ctx.buffer[ctx_buflen++] = ((char *) alt_result)[0];
 		else
-			ctx.buffer[ctx.buflen++] = pass[0];
+			ctx.buffer[ctx_buflen++] = pass[0];
 
-	md5_digest(&ctx, alt_result);
-
-
+	md5_digest(&ctx, alt_result,&ctx_buflen);
 
 	for (i = 0; i < 1000; i++) {
-		init_ctx(&ctx);
-
+		init_ctx(&ctx,&ctx_buflen);
+		
 		if ((i & 1) != 0)
 			ctx_update_global(&ctx, (__global uint8_t *) pass,
-			    pass_len);
+			    pass_len,&ctx_buflen);
 		else
-			ctx_update_private(&ctx, (uint8_t *) alt_result, 16);
-
+			ctx_update_private(&ctx, (uint8_t *) alt_result, 16,&ctx_buflen);
+		
 		if (i % 3 != 0)
 			ctx_update_global(&ctx, (__global uint8_t *) salt,
-			    salt_len);
+			    salt_len,&ctx_buflen);
 
 		if (i % 7 != 0)
 			ctx_update_global(&ctx, (__global uint8_t *) pass,
-			    pass_len);
+			    pass_len,&ctx_buflen);
 
 		if ((i & 1) != 0)
-			ctx_update_private(&ctx, (uint8_t *) alt_result, 16);
+			ctx_update_private(&ctx, (uint8_t *) alt_result, 16,&ctx_buflen);
 		else
 			ctx_update_global(&ctx, (__global uint8_t *) pass,
-			    pass_len);
-		md5_digest(&ctx, alt_result);
-
+			    pass_len,&ctx_buflen);
+		md5_digest(&ctx, alt_result,&ctx_buflen);
 	}
-	tresult[0] = ctx.A;
-	tresult[1] = ctx.B;
-	tresult[2] = ctx.C;
-	tresult[3] = ctx.D;
+	
+#define KEYS_PER_CRYPT 1024*9
+#define address(j,idx) 			(((j)*KEYS_PER_CRYPT)+(idx))
+
+#define K(q)\
+	outbuffer[address(q, idx)] = alt_result[q];
+
+	K(0) K(1) K(2) K(3)
+	
 }
