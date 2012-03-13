@@ -11,10 +11,10 @@
 #include <string.h>
 
 #ifdef BSD
-	 // OSX 
-	 #include <architecture/byte_order.h>
+// OSX 
+#include <architecture/byte_order.h>
 #else
-	 #include <endian.h>
+#include <endian.h>
 #endif
 
 
@@ -29,8 +29,9 @@
 #include "base64.h"
 #include "common-opencl.h"
 
+#define ALGORITHM_NAME			"OpenCL"
 #define FORMAT_LABEL			"ssha-opencl"
-#define FORMAT_NAME			"Netscape LDAP SSHA OPENCL"
+#define FORMAT_NAME			"Netscape LDAPS"
 #define SHA_TYPE                        "salted SHA-1"
 
 #define BENCHMARK_COMMENT		""
@@ -43,7 +44,7 @@
 #define NUM_BLOCKS			5
 
 #define PLAINTEXT_LENGTH		32
-#define SSHA_NUM_KEYS         		512*2048*4
+#define SSHA_NUM_KEYS         		1024*2048*4
 
 #define MIN_KEYS_PER_CRYPT              1024
 #define MAX_KEYS_PER_CRYPT		SSHA_NUM_KEYS
