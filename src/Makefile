@@ -118,7 +118,7 @@ JOHN_OBJS = \
 
 OCL_OBJS = \
 	common-opencl.o opencl_mysqlsha1_fmt.o \
-	cryptmd5_opencl_fmt.o phpass_opencl_fmt.o opencl_rawsha1_fmt.o \
+	opencl_cryptmd5_fmt.o opencl_phpass_fmt.o opencl_rawsha1_fmt.o \
 	opencl_nt_fmt.o opencl_rawmd5_fmt.o  opencl_nsldaps_fmt.o
 
 CUDA_OBJS = \
@@ -1499,6 +1499,9 @@ john.com: john.asm
 ../run/calc_stat.exe: calc_stat.o
 	$(LD) calc_stat.o $(LDFLAGS_MKV) -o ../run/calc_stat.exe
 
+SIPdump: SIPdump.o
+	$(LD) SIPdump.o $(LDFLAGS) -lpcap -o ../run/SIPdump
+
 ../run/tgtsnarf: tgtsnarf.o
 	$(LD) tgtsnarf.o $(LDFLAGS) -o ../run/tgtsnarf
 
@@ -1571,7 +1574,7 @@ clean:
 	$(RM) $(PROJ) $(PROJ_DOS) $(PROJ_WIN32) $(PROJ_WIN32_MINGW)
 	$(RM) ../run/john.exe john-macosx-* *.o *.bak core ../run/*.cl
 	$(RM) detect bench para-bench generic.h arch.h tmp.s
-	$(RM) cuda/*.o cuda/*~ *~
+	$(RM) cuda/*.o cuda/*~ *~ ../run/SIPdump
 	$(RM) fmt_registers.h fmt_externs.h john_build_rule.h
 	$(CP) $(NULL) Makefile.dep
 
