@@ -19,8 +19,8 @@
 #include "common-opencl.h"
 
 #define FORMAT_LABEL			"raw-sha1-opencl"
-#define FORMAT_NAME			"Raw SHA-1 OpenCL"
-#define ALGORITHM_NAME			"raw-sha1-opencl"
+#define FORMAT_NAME			"Raw SHA-1"
+#define ALGORITHM_NAME			"OpenCL"
 #define SHA_TYPE                        "SHA-1"
 #define BENCHMARK_COMMENT		""
 #define BENCHMARK_LENGTH		-1
@@ -31,7 +31,7 @@
 #define BINARY_SIZE			20
 #define SALT_SIZE			0
 
-#define SHA_NUM_KEYS               	1024*2048
+#define SHA_NUM_KEYS               	1024*2048*2
 
 #define MIN_KEYS_PER_CRYPT		2048
 #define MAX_KEYS_PER_CRYPT		SHA_NUM_KEYS
