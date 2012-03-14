@@ -111,8 +111,8 @@ static int max_key_length = 0;
 static char get_key_saved[PLAINTEXT_LENGTH+1];
 
 //OpenCL variables
-cl_kernel nt_crypt_kernel;
-cl_mem pinned_saved_keys, pinned_bbbs, buffer_out, buffer_keys, data_info;
+static cl_kernel nt_crypt_kernel;
+static cl_mem pinned_saved_keys, pinned_bbbs, buffer_out, buffer_keys, data_info;
 
 static unsigned int datai[2];
 size_t global_work_size = NT_NUM_KEYS;
