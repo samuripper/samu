@@ -29,8 +29,7 @@
 #define MIN_KEYS_PER_CRYPT	KEYS_PER_CRYPT
 #define MAX_KEYS_PER_CRYPT	KEYS_PER_CRYPT
 #define FORMAT_LABEL		"phpass-opencl"
-#define FORMAT_NAME		"PHPASS"
-#define ALGORITHM_NAME		"OpenCL"
+#define FORMAT_NAME		"PHPASS-OPENCL"
 
 //#define _PHPASS_DEBUG
 
