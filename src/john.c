@@ -56,6 +56,9 @@
 #include <openssl/opensslv.h>
 #include "unicode.h"
 #include "plugin.h"
+#ifdef CL_VERSION_1_0
+#include "common-opencl.h"
+#endif
 
 #if CPU_DETECT
 extern int CPU_detect(void);
@@ -107,6 +110,7 @@ extern struct fmt_main fmt_opencl_rawSHA1;
 extern struct fmt_main fmt_opencl_cryptMD5;
 extern struct fmt_main fmt_opencl_phpass;
 extern struct fmt_main fmt_opencl_mysqlsha1;
+extern struct fmt_main fmt_opencl_cryptsha512;
 #endif 
 #ifdef HAVE_CUDA
 extern struct fmt_main fmt_cuda_cryptmd5;
@@ -220,6 +224,7 @@ static void john_register_all(void)
 	john_register_one(&fmt_opencl_cryptMD5);
 	john_register_one(&fmt_opencl_phpass);
 	john_register_one(&fmt_opencl_mysqlsha1);
+	john_register_one(&fmt_opencl_cryptsha512);
 #endif 
 
 #ifdef HAVE_CUDA
@@ -509,6 +514,14 @@ static void john_init(char *name, int argc, char **argv)
 		}
 	}
 
+	if (options.subformat && !strcasecmp(options.subformat, "list"))
+	{
+		dynamic_DISPLAY_ALL_FORMATS();
+		// NOTE if we have other 'generics', like sha1, sha2, rc4, ....  then EACH of
+		// them should have a DISPLAY_ALL_FORMATS() function and we can call them here.
+		exit(0);
+	}
+
 	initUnicode(UNICODE_UNICODE); /* Init the unicode system */
 
 	john_register_all(); /* maybe restricted to one format by options */
@@ -519,6 +532,18 @@ static void john_init(char *name, int argc, char **argv)
 
 	if (options.encodingStr && options.encodingStr[0])
 		log_event("- %s input encoding enabled", options.encodingStr);
+
+#ifdef CL_VERSION_1_0
+	if (!options.ocl_platform)
+	if ((options.ocl_platform =
+	     cfg_get_param(SECTION_OPTIONS, SUBSECTION_OPENCL, "Platform")))
+		platform_id = atoi(options.ocl_platform);
+
+	if (!options.ocl_device)
+	if ((options.ocl_device =
+	     cfg_get_param(SECTION_OPTIONS, SUBSECTION_OPENCL, "Device")))
+		gpu_id = atoi(options.ocl_device);
+#endif
 }
 
 static void john_run(void)

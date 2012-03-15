@@ -30,7 +30,7 @@ NVCC_FLAGS = -c -Xptxas -v -arch sm_10
 
 OMPFLAGS =
 # gcc with OpenMP
-#OMPFLAGS = -fopenmp
+OMPFLAGS = -fopenmp
 #OMPFLAGS = -fopenmp -msse2
 # Sun Studio with OpenMP (set the OMP_NUM_THREADS env var at runtime)
 #OMPFLAGS = -xopenmp
@@ -118,8 +118,9 @@ JOHN_OBJS = \
 
 OCL_OBJS = \
 	common-opencl.o opencl_mysqlsha1_fmt.o \
-	cryptmd5_opencl_fmt.o phpass_opencl_fmt.o opencl_rawsha1_fmt.o \
-	opencl_nt_fmt.o opencl_rawmd5_fmt.o  opencl_nsldaps_fmt.o
+	opencl_cryptmd5_fmt.o opencl_phpass_fmt.o opencl_rawsha1_fmt.o \
+	opencl_nt_fmt.o opencl_rawmd5_fmt.o  opencl_nsldaps_fmt.o \
+        opencl_cryptsha512_fmt.o
 
 CUDA_OBJS = \
 	cuda_common.o \
@@ -309,6 +310,7 @@ linux-x86-64-gpu:
 		CFLAGS="$(CFLAGS) -I$(OCLROOT)/include -DHAVE_CRYPT -DCL_VERSION_1_0 -DHAVE_CUDA -DHAVE_DL" \
 		LDFLAGS="$(LDFLAGS) -L$(OCLROOT)/lib/x86_64 -L$(OCLROOT)/lib64 -L$(CUDA64PATH) -lcrypt -lOpenCL -ldl -lcudart"
 	$(CP) opencl/*.cl ../run/
+	$(CP) opencl_cryptsha512.h ../run/
 
 linux-x86-64-opencl:
 	$(LN) x86-64.h arch.h
@@ -318,6 +320,7 @@ linux-x86-64-opencl:
 		CFLAGS="$(CFLAGS) -I$(OCLROOT)/include -I$(OCLROOT)/include -DHAVE_CRYPT -DCL_VERSION_1_0 -DHAVE_DL" \
 		LDFLAGS="$(LDFLAGS) -L$(OCLROOT)/lib/x86_64 -L$(OCLROOT)/lib64 -lcrypt -lOpenCL -ldl"
 	$(CP) opencl/*.cl ../run/
+	$(CP) opencl_cryptsha512.h ../run/
 
 linux-x86-64-cuda:
 	$(LN) x86-64.h arch.h
@@ -949,11 +952,12 @@ macosx-x86-64-opencl:
 	$(LN) x86-64.h arch.h
 	@echo "#define JOHN_BLD" '"'$@'"' > john_build_rule.h
 	$(MAKE) $(PROJ) \
-		JOHN_OBJS="$(JOHN_OBJS) $(OCL_OBJS) x86-64.o sse-intrinsics-64.o" \
+		JOHN_OBJS="$(JOHN_OBJS) $(OCL_OBJS) x86-64.o sse-intrinsics.o" \
 		ASFLAGS="$(ASFLAGS) -m64 -DUNDERSCORES -DBSD -DALIGN_LOG" \
 		CFLAGS="$(CFLAGS) -m64  -I$(OCLROOT)/include -I$(OCLROOT)/include  -DBSD -DCL_VERSION_1_0" \
 		LDFLAGS="$(LDFLAGS) -m64 -L$(OCLROOT)/lib/x86_64 -L$(NVIDIA_CUDA)/lib64 -framework OpenCL"
 	$(CP) opencl/*.cl ../run/
+	$(CP) opencl_cryptsha512.h ../run/
 
 macosx-x86-64:
 	$(LN) x86-64.h arch.h
@@ -1499,6 +1503,9 @@ john.com: john.asm
 ../run/calc_stat.exe: calc_stat.o
 	$(LD) calc_stat.o $(LDFLAGS_MKV) -o ../run/calc_stat.exe
 
+SIPdump: SIPdump.o
+	$(LD) SIPdump.o $(LDFLAGS) -lpcap -o ../run/SIPdump
+
 ../run/tgtsnarf: tgtsnarf.o
 	$(LD) tgtsnarf.o $(LDFLAGS) -o ../run/tgtsnarf
 
@@ -1571,7 +1578,7 @@ clean:
 	$(RM) $(PROJ) $(PROJ_DOS) $(PROJ_WIN32) $(PROJ_WIN32_MINGW)
 	$(RM) ../run/john.exe john-macosx-* *.o *.bak core ../run/*.cl
 	$(RM) detect bench para-bench generic.h arch.h tmp.s
-	$(RM) cuda/*.o cuda/*~ *~
+	$(RM) cuda/*.o cuda/*~ *~ ../run/SIPdump
 	$(RM) fmt_registers.h fmt_externs.h john_build_rule.h
 	$(CP) $(NULL) Makefile.dep
 

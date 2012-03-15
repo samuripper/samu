@@ -29,7 +29,8 @@
 #define MIN_KEYS_PER_CRYPT	KEYS_PER_CRYPT
 #define MAX_KEYS_PER_CRYPT	KEYS_PER_CRYPT
 #define FORMAT_LABEL		"phpass-opencl"
-#define FORMAT_NAME		"PHPASS-OPENCL"
+#define FORMAT_NAME		"PHPASS"
+#define ALGORITHM_NAME		"OpenCL"
 
 //#define _PHPASS_DEBUG
 
@@ -180,7 +181,7 @@ static void find_best_workgroup()
 static void init(struct fmt_main *pFmt)
 {
 	//atexit(release_all);
-	opencl_init("$JOHN/opencl_phpass_kernel.cl", gpu_id);
+	opencl_init("$JOHN/phpass_kernel.cl", gpu_id,platform_id);
 
 	/// Alocate memory
 	cl_int cl_error;

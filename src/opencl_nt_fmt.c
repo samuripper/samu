@@ -111,8 +111,8 @@ static int max_key_length = 0;
 static char get_key_saved[PLAINTEXT_LENGTH+1];
 
 //OpenCL variables
-cl_kernel nt_crypt_kernel;
-cl_mem pinned_saved_keys, pinned_bbbs, buffer_out, buffer_keys, data_info;
+static cl_kernel nt_crypt_kernel;
+static cl_mem pinned_saved_keys, pinned_bbbs, buffer_out, buffer_keys, data_info;
 
 static unsigned int datai[2];
 size_t global_work_size = NT_NUM_KEYS;
@@ -207,7 +207,7 @@ static void fmt_NT_init(struct fmt_main *pFmt){
 	int argIndex = 0;
 	
 	atexit(release_all);
-	opencl_init("$JOHN/nt_opencl_kernel.cl", gpu_id, platform_id);
+	opencl_init("$JOHN/nt_kernel.cl", gpu_id, platform_id);
 
 	nt_crypt_kernel = clCreateKernel( program[gpu_id], "nt_crypt", &ret_code );
 	HANDLE_CLERROR(ret_code,"Error creating kernel");

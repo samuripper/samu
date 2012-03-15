@@ -15,19 +15,19 @@
 #include "formats.h"
 #include "common-opencl.h"
 
-#define MD5_NUM_KEYS        1024*2048
+#define MD5_NUM_KEYS        1024*2048*2
 #define PLAINTEXT_LENGTH    31
 #define FORMAT_LABEL        "raw-md5-opencl"
 #define FORMAT_NAME         "Raw MD5"
-#define ALGORITHM_NAME      "raw-md5-opencl"
+#define ALGORITHM_NAME	    "OpenCL"
 #define BENCHMARK_COMMENT   ""
 #define BENCHMARK_LENGTH    -1
 #define CIPHERTEXT_LENGTH   32
 #define BINARY_SIZE         16
 #define SALT_SIZE           0
 
-cl_command_queue queue_prof;
-cl_mem pinned_saved_keys, pinned_partial_hashes, buffer_out, buffer_keys, data_info;
+static cl_command_queue queue_prof;
+static cl_mem pinned_saved_keys, pinned_partial_hashes, buffer_out, buffer_keys, data_info;
 static cl_uint *partial_hashes;
 static cl_uint *res_hashes;
 static char *saved_plain;
@@ -213,7 +213,7 @@ static void find_best_kpc(void){
 static void fmt_MD5_init(struct fmt_main *pFmt) {
 	char *kpc;
 
-	opencl_init("$JOHN/md5_opencl_kernel.cl", gpu_id, platform_id);
+	opencl_init("$JOHN/md5_kernel.cl", gpu_id, platform_id);
 	crypt_kernel = clCreateKernel(program[gpu_id], "md5", &ret_code);
 	HANDLE_CLERROR(ret_code, "Error creating kernel. Double-check kernel name?");
 	if( ((kpc = getenv("LWS")) == NULL) || (atoi(kpc) == 0)) {
