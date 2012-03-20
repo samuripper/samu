@@ -30,7 +30,7 @@ NVCC_FLAGS = -c -Xptxas -v -arch sm_10
 
 OMPFLAGS =
 # gcc with OpenMP
-OMPFLAGS = -fopenmp
+#OMPFLAGS = -fopenmp
 #OMPFLAGS = -fopenmp -msse2
 # Sun Studio with OpenMP (set the OMP_NUM_THREADS env var at runtime)
 #OMPFLAGS = -xopenmp
@@ -102,6 +102,7 @@ JOHN_OBJS = \
 	unrarcmd.o unrarfilter.o unrarhlp.o unrar.o unrarppm.o unrarvm.o \
 	rar_fmt.o rar2john.o \
 	zip_fmt.o zip2john.o gladman_hmac.o gladman_pwd2key.o \
+	racf2john.o \
 	$(PLUGFORMATS_OBJS) \
 	plugin.o \
 	dummy.o \
@@ -175,21 +176,24 @@ GENMKVPWD_OBJS = \
 PROJ = ../run/john ../run/unshadow ../run/unafs ../run/unique ../run/undrop \
 	../run/ssh2john ../run/pdf2john ../run/rar2john ../run/zip2john \
 	../run/genmkvpwd ../run/mkvcalcproba ../run/calc_stat \
-	../run/tgtsnarf
+	../run/tgtsnarf ../run/racf2john
 PROJ_DOS = ../run/john.bin ../run/john.com \
 	../run/unshadow.com ../run/unafs.com ../run/unique.com \
 	../run/undrop.com \
-	../run/ssh2john.com ../run/pdf2john.com ../run/rar2john.com ../run/zip2john
+	../run/ssh2john.com ../run/pdf2john.com ../run/rar2john.com ../run/zip2john \
+	../run/racf2john.com
 PROJ_WIN32 = ../run/john.exe \
 	../run/unshadow.exe ../run/unafs.exe ../run/unique.exe \
 	../run/undrop.exe \
 	../run/ssh2john.exe ../run/pdf2john.exe ../run/rar2john.exe ../run/zip2john.exe \
-	../run/genmkvpwd.exe ../run/mkvcalcproba.exe ../run/calc_stat.exe
+	../run/genmkvpwd.exe ../run/mkvcalcproba.exe ../run/calc_stat.exe \
+	../run/racf2john.exe
 PROJ_WIN32_MINGW = ../run/john-mingw.exe \
 	../run/unshadow.exe ../run/unafs.exe ../run/unique.exe \
 	../run/undrop.exe \
 	../run/ssh2john.exe ../run/pdf2john.exe ../run/rar2john.exe ../run/zip2john.exe \
-	../run/genmkvpwd.exe ../run/mkvcalcproba.exe ../run/calc_stat.exe
+	../run/genmkvpwd.exe ../run/mkvcalcproba.exe ../run/calc_stat.exe \
+	../run/racf2john.exe
 
 default:
 	@echo "To build John the Ripper, type:"
@@ -307,7 +311,7 @@ linux-x86-64-gpu:
 	@echo "#define JOHN_BLD" '"'$@'"' > john_build_rule.h
 	$(MAKE) $(PROJ) \
 		JOHN_OBJS="$(JOHN_OBJS) $(OCL_OBJS) $(CUDA_OBJS) c3_fmt.o x86-64.o sse-intrinsics-64.o" \
-		CFLAGS="$(CFLAGS) -I$(OCLROOT)/include -DHAVE_CRYPT -DCL_VERSION_1_0 -DHAVE_CUDA -DHAVE_DL" \
+		CFLAGS="$(CFLAGS) -I$(OCLROOT)/include -DHAVE_CRYPT -DCL_VERSION_1_0 -DHAVE_CUDA -DHAVE_DL -DUSING_ICC_S_FILE" \
 		LDFLAGS="$(LDFLAGS) -L$(OCLROOT)/lib/x86_64 -L$(OCLROOT)/lib64 -L$(CUDA64PATH) -lcrypt -lOpenCL -ldl -lcudart"
 	$(CP) opencl/*.cl ../run/
 	$(CP) opencl_cryptsha512.h ../run/
@@ -317,7 +321,7 @@ linux-x86-64-opencl:
 	@echo "#define JOHN_BLD" '"'$@'"' > john_build_rule.h
 	$(MAKE) $(PROJ) \
 		JOHN_OBJS="$(JOHN_OBJS) $(OCL_OBJS) c3_fmt.o x86-64.o sse-intrinsics-64.o" \
-		CFLAGS="$(CFLAGS) -I$(OCLROOT)/include -I$(OCLROOT)/include -DHAVE_CRYPT -DCL_VERSION_1_0 -DHAVE_DL" \
+		CFLAGS="$(CFLAGS) -I$(OCLROOT)/include -I$(OCLROOT)/include -DHAVE_CRYPT -DCL_VERSION_1_0 -DHAVE_DL -DUSING_ICC_S_FILE" \
 		LDFLAGS="$(LDFLAGS) -L$(OCLROOT)/lib/x86_64 -L$(OCLROOT)/lib64 -lcrypt -lOpenCL -ldl"
 	$(CP) opencl/*.cl ../run/
 	$(CP) opencl_cryptsha512.h ../run/
@@ -434,7 +438,7 @@ linux-x86-gpu:
 	@echo "#define JOHN_BLD" '"'$@'"' > john_build_rule.h
 	$(MAKE) $(PROJ) \
 		JOHN_OBJS="$(JOHN_OBJS) $(OCL_OBJS) $(CUDA_OBJS) c3_fmt.o x86.o x86-sse.o sha1-mmx.o md4-mmx.o md5-mmx.o sse-intrinsics-32.o" \
-		CFLAGS="$(CFLAGS) -I$(OCLROOT)/include -DHAVE_CRYPT -DCL_VERSION_1_0 -DHAVE_CUDA -DHAVE_DL" \
+		CFLAGS="$(CFLAGS) -I$(OCLROOT)/include -DHAVE_CRYPT -DCL_VERSION_1_0 -DHAVE_CUDA -DHAVE_DL -DUSING_ICC_S_FILE" \
 		LDFLAGS="$(LDFLAGS) -L$(OCLROOT)/lib/x86 -L$(OCLROOT)/lib -L$(CUDAPATH) -lcrypt -lOpenCL -ldl -lcudart"
 	$(CP) opencl/*.cl ../run/
 	#/bin/sh ./setup-opencl-stuff.sh
@@ -444,7 +448,7 @@ linux-x86-opencl:
 	@echo "#define JOHN_BLD" '"'$@'"' > john_build_rule.h
 	$(MAKE) $(PROJ) \
 		JOHN_OBJS="$(JOHN_OBJS) $(OCL_OBJS) c3_fmt.o x86.o x86-sse.o sha1-mmx.o md4-mmx.o md5-mmx.o sse-intrinsics-32.o" \
-		CFLAGS="$(CFLAGS) -I$(OCLROOT)/include -DHAVE_CRYPT -DCL_VERSION_1_0 -DHAVE_DL" \
+		CFLAGS="$(CFLAGS) -I$(OCLROOT)/include -DHAVE_CRYPT -DCL_VERSION_1_0 -DHAVE_DL -DUSING_ICC_S_FILE" \
 		LDFLAGS="$(LDFLAGS) -L$(OCLROOT)/lib/x86 -L$(OCLROOT)/lib -lcrypt -lOpenCL -ldl"
 	$(CP) opencl/*.cl ../run/
 	#/bin/sh ./setup-opencl-stuff.sh
@@ -454,7 +458,7 @@ linux-x86-cuda:
 	@echo "#define JOHN_BLD" '"'$@'"' > john_build_rule.h
 	$(MAKE) $(PROJ) \
 		JOHN_OBJS="$(JOHN_OBJS) $(CUDA_OBJS) c3_fmt.o x86.o x86-sse.o sha1-mmx.o md4-mmx.o md5-mmx.o sse-intrinsics-32.o" \
-		CFLAGS="$(CFLAGS) -DHAVE_CRYPT -DHAVE_DL -DHAVE_CUDA" \
+		CFLAGS="$(CFLAGS) -DHAVE_CRYPT -DHAVE_DL -DHAVE_CUDA -DUSING_ICC_S_FILE" \
 		LDFLAGS="$(LDFLAGS) -L$(CUDAPATH) -lcrypt -ldl -lcudart"
 
 linux-x86-sse2:
@@ -1394,6 +1398,10 @@ cuda_rawsha224_fmt.o: cuda_rawsha224.o cuda_rawsha256_fmt.c cuda_rawsha256.h
 	$(RM) ../run/rar2john
 	ln -s john ../run/rar2john
 
+../run/racf2john: ../run/john
+	$(RM) ../run/racf2john
+	ln -s john ../run/racf2john
+
 ../run/unique: ../run/john
 	$(RM) ../run/unique
 	ln -s john ../run/unique
@@ -1423,6 +1431,9 @@ cuda_rawsha224_fmt.o: cuda_rawsha224.o cuda_rawsha256_fmt.c cuda_rawsha256.h
 
 ../run/rar2john.com: john.com
 	copy john.com ..\run\rar2john.com
+
+../run/racf2john.com: john.com
+	copy john.com ..\run\racf2john.com
 
 ../run/zip2john.com: john.com
 	copy john.com ..\run\zip2john.com
@@ -1477,6 +1488,10 @@ john.com: john.asm
 	$(CC) symlink.c -o ../run/rar2john.exe
 	strip ../run/rar2john.exe
 
+../run/racf2john.exe: symlink.c
+	$(CC) symlink.c -o ../run/racf2john.exe
+	strip ../run/racf2john.exe
+
 ../run/zip2john.exe: symlink.c
 	$(CC) symlink.c -o ../run/zip2john.exe
 	strip ../run/zip2john.exe
@@ -1505,6 +1520,9 @@ john.com: john.asm
 
 SIPdump: SIPdump.o
 	$(LD) SIPdump.o $(LDFLAGS) -lpcap -o ../run/SIPdump
+
+vncpcap2john:
+	g++ vncpcap2john.cpp -lpcap -o ../run/vncpcap2john
 
 ../run/tgtsnarf: tgtsnarf.o
 	$(LD) tgtsnarf.o $(LDFLAGS) -o ../run/tgtsnarf
