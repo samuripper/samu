@@ -23,11 +23,6 @@ CPPFLAGS = -E
 #CC = mpicc -DHAVE_MPI
 #MPIOBJ = john-mpi.o
 
-CUDAPATH = /usr/local/cuda/lib
-CUDA64PATH = /usr/local/cuda/lib64
-NVCC_FLAGS = -c -Xptxas -v -arch sm_10
-
-
 OMPFLAGS =
 # gcc with OpenMP
 #OMPFLAGS = -fopenmp
@@ -40,7 +35,26 @@ OMPFLAGS =
 # NSS (and NSPR) flag, un-comment if installed (needed for mozilla format)
 #HAVE_NSS = -DHAVE_NSS
 
-CFLAGS = -c -Wall -O2 -fomit-frame-pointer -I/usr/local/include $(HAVE_NSS) $(OMPFLAGS) $(JOHN_CFLAGS) `pkg-config --cflags nss`
+# Change sm_10 to sm_20 if you have Fermi support (400 series or later)
+NVCC_FLAGS = -c -Xptxas -v -arch sm_13
+CUDAPATH = /usr/local/cuda/lib
+CUDA64PATH = /usr/local/cuda/lib64
+
+ifdef NVIDIA_CUDA
+OCLROOT = $(NVIDIA_CUDA)
+else
+OCLROOT = /usr/local/cuda
+endif
+ifdef AMDAPPSDKROOT
+AMDAPP = -DAMDAPPSDK
+OCLROOT = $(AMDAPPSDKROOT)
+endif
+ifdef ATISTREAMSDKROOT
+AMDAPP = -DAMDAPPSDK
+OCLROOT = $(ATISTREAMSDKROOT)
+endif
+
+CFLAGS = -c -Wall -O2 -fomit-frame-pointer -I/usr/local/include $(HAVE_NSS) $(OMPFLAGS) $(JOHN_CFLAGS) $(AMDAPP) `pkg-config --cflags nss`
 # -DHAVE_SKEY
 # CFLAGS for use on the main john.c file only
 CFLAGS_MAIN = $(CFLAGS)
@@ -57,20 +71,6 @@ OPT_INLINE = -Os -funroll-loops -finline-functions
 PLUGFORMATS_SRCS: sh =echo *_plug.c
 PLUGFORMATS_SRCS += $(wildcard *_plug.c)
 PLUGFORMATS_OBJS = $(PLUGFORMATS_SRCS:.c=.o)
-
-ifdef NVIDIA_CUDA
-OCLROOT=$(NVIDIA_CUDA)
-else
-OCLROOT=/usr/local/cuda
-endif
-ifdef AMDAPPSDKROOT
-OCLROOT=$(AMDAPPSDKROOT)
-endif
-ifdef ATISTREAMSDKROOT
-OCLROOT=$(ATISTREAMSDKROOT)
-endif
-
-
 
 JOHN_OBJS = \
 	$(MPIOBJ) \
@@ -124,8 +124,8 @@ JOHN_OBJS = \
 OCL_OBJS = \
 	common-opencl.o opencl_mysqlsha1_fmt.o \
 	opencl_cryptmd5_fmt.o opencl_phpass_fmt.o opencl_rawsha1_fmt.o \
-	opencl_nt_fmt.o opencl_rawmd5_fmt.o  opencl_nsldaps_fmt.o \
-        opencl_cryptsha512_fmt.o
+	opencl_nt_fmt.o opencl_rawmd5_fmt.o opencl_nsldaps_fmt.o \
+	opencl_cryptsha512_fmt.o opencl_MSCASH2_fmt.o
 
 CUDA_OBJS = \
 	cuda_common.o \
@@ -136,7 +136,8 @@ CUDA_OBJS = \
 	cuda_mscash2_fmt.o cuda_mscash2.o \
 	cuda_rawsha256_fmt.o cuda_rawsha256.o \
 	cuda_rawsha224_fmt.o cuda_rawsha224.o \
-	cuda_mscash_fmt.o cuda_mscash.o
+	cuda_mscash_fmt.o cuda_mscash.o \
+	cuda_xsha512_fmt.o cuda_xsha512.o
 
 BENCH_DES_OBJS_ORIG = \
 	DES_fmt.o DES_std.o
@@ -325,7 +326,7 @@ linux-x86-64-opencl:
 	@echo "#define JOHN_BLD" '"'$@'"' > john_build_rule.h
 	$(MAKE) $(PROJ) \
 		JOHN_OBJS="$(JOHN_OBJS) $(OCL_OBJS) c3_fmt.o x86-64.o sse-intrinsics-64.o" \
-		CFLAGS="$(CFLAGS) -I$(OCLROOT)/include -I$(OCLROOT)/include -DHAVE_CRYPT -DCL_VERSION_1_0 -DHAVE_DL -DUSING_ICC_S_FILE" \
+		CFLAGS="$(CFLAGS) -I$(OCLROOT)/include -DHAVE_CRYPT -DCL_VERSION_1_0 -DHAVE_DL -DUSING_ICC_S_FILE" \
 		LDFLAGS="$(LDFLAGS) -L$(OCLROOT)/lib/x86_64 -L$(OCLROOT)/lib64 -lcrypt -lOpenCL -ldl"
 	$(CP) opencl/*.cl ../run/
 	$(CP) opencl_cryptsha512.h ../run/
@@ -470,7 +471,7 @@ linux-x86-sse2:
 	@echo "#define JOHN_BLD" '"'$@'"' > john_build_rule.h
 	$(MAKE) $(PROJ) \
 		JOHN_OBJS="$(JOHN_OBJS) c3_fmt.o x86.o x86-sse.o sha1-mmx.o md4-mmx.o md5-mmx.o sse-intrinsics.o" \
-		CFLAGS="$(CFLAGS) -DHAVE_CRYPT -DHAVE_DL" \
+		CFLAGS="$(CFLAGS) -msse2 -DHAVE_CRYPT -DHAVE_DL" \
 		LDFLAGS="$(LDFLAGS) -lcrypt -ldl"
 
 linux-x86-sse2i:
@@ -962,7 +963,7 @@ macosx-x86-64-opencl:
 	$(MAKE) $(PROJ) \
 		JOHN_OBJS="$(JOHN_OBJS) $(OCL_OBJS) x86-64.o sse-intrinsics.o" \
 		ASFLAGS="$(ASFLAGS) -m64 -DUNDERSCORES -DBSD -DALIGN_LOG" \
-		CFLAGS="$(CFLAGS) -m64  -I$(OCLROOT)/include -I$(OCLROOT)/include  -DBSD -DCL_VERSION_1_0" \
+		CFLAGS="$(CFLAGS) -m64 -I$(OCLROOT)/include -DBSD -DCL_VERSION_1_0" \
 		LDFLAGS="$(LDFLAGS) -m64 -L$(OCLROOT)/lib/x86_64 -L$(NVIDIA_CUDA)/lib64 -framework OpenCL"
 	$(CP) opencl/*.cl ../run/
 	$(CP) opencl_cryptsha512.h ../run/
@@ -1371,6 +1372,13 @@ cuda_rawsha224.o:  cuda_rawsha256.h cuda/rawsha256.cu cuda_common.o
 cuda_rawsha224_fmt.o: cuda_rawsha224.o cuda_rawsha256_fmt.c cuda_rawsha256.h
 	$(CC)  $(CFLAGS) -DSHA224 cuda_rawsha256_fmt.c -o cuda_rawsha224_fmt.o
 
+cuda_xsha512.o: cuda_xsha512.h cuda/xsha512.cu cuda_common.o
+	cd cuda; nvcc $(NVCC_FLAGS) xsha512.cu
+	mv cuda/xsha512.o cuda_xsha512.o
+
+cuda_xsha512_fmt.o: cuda_xsha512.o cuda_xsha512_fmt.c cuda_xsha512.h
+	$(CC) $(CFLAGS) cuda_xsha512_fmt.c -o cuda_xsha512_fmt.o
+
 ../run/john: $(JOHN_OBJS)
 	$(LD) $(JOHN_OBJS) $(LDFLAGS) -o ../run/john
 
@@ -1544,6 +1552,9 @@ SIPdump: SIPdump.o
 
 vncpcap2john:
 	g++ vncpcap2john.cpp -lpcap -o ../run/vncpcap2john
+
+office2john:
+	$(CC) `xml2-config --cflags` `pkg-config --cflags libgsf-1` office2john.c common.o base64.o `pkg-config --libs libgsf-1` `xml2-config --libs` -o ../run/office2john
 
 ../run/tgtsnarf: tgtsnarf.o
 	$(LD) tgtsnarf.o $(LDFLAGS) -o ../run/tgtsnarf
