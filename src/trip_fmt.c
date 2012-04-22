@@ -250,9 +250,15 @@ static int NAME(int index) \
 	if (hash_func == CALL) \
 		return buffer[index].hash; \
 	{ \
+		int block; \
 		MAYBE_T0; \
+<<<<<<< HEAD
 		int block = buffer[index].block; \
 		blkcpy(DES_bs_all.B, crypt_out[block], 27 + 3); \
+=======
+		block = buffer[index].block; \
+		memcpy(DES_bs_all.B, crypt_out[block], sizeof(DES_bs_all.B)); \
+>>>>>>> 46857773aae15e2f7c70903db0bd9e70f250bb4c
 		return (next_hash_func = CALL)(buffer[index].index); \
 	} \
 }
@@ -501,17 +507,36 @@ static int cmp_all(void *binary, int count)
 
 static int cmp_one(void *binary, int index)
 {
+	int block;
 	MAYBE_T0;
+<<<<<<< HEAD
 	int block = buffer[index].block;
 	blkcpy(DES_bs_all.B, crypt_out[block], 32);
 	return DES_bs_cmp_one((ARCH_WORD_32 *)binary, 32, buffer[index].index);
+=======
+	block = buffer[index].block;
+	memcpy(DES_bs_all.B, crypt_out[block], sizeof(DES_bs_all.B));
+	memset(&DES_bs_all.B[39], 0, sizeof(DES_bs_all.B[39]));
+	memset(&DES_bs_all.B[47], 0, sizeof(DES_bs_all.B[47]));
+	memset(&DES_bs_all.B[55], 0, sizeof(DES_bs_all.B[55]));
+	return DES_bs_cmp_one((ARCH_WORD *)binary, 32, buffer[index].index);
+>>>>>>> 46857773aae15e2f7c70903db0bd9e70f250bb4c
 }
 
 static int cmp_exact(char *source, int index)
 {
+	int block;
 	MAYBE_T0;
+<<<<<<< HEAD
 	int block = buffer[index].block;
 	blkcpy(DES_bs_all.B, crypt_out[block], 64);
+=======
+	block = buffer[index].block;
+	memcpy(DES_bs_all.B, crypt_out[block], sizeof(DES_bs_all.B));
+	memset(&DES_bs_all.B[39], 0, sizeof(DES_bs_all.B[39]));
+	memset(&DES_bs_all.B[47], 0, sizeof(DES_bs_all.B[47]));
+	memset(&DES_bs_all.B[55], 0, sizeof(DES_bs_all.B[55]));
+>>>>>>> 46857773aae15e2f7c70903db0bd9e70f250bb4c
 	return DES_bs_cmp_one(get_binary(source), 64, buffer[index].index);
 }
 #else

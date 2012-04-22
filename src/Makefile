@@ -23,11 +23,6 @@ CPPFLAGS = -E
 #CC = mpicc -DHAVE_MPI
 #MPIOBJ = john-mpi.o
 
-CUDAPATH = /usr/local/cuda/lib
-CUDA64PATH = /usr/local/cuda/lib64
-NVCC_FLAGS = -c -Xptxas -v -arch sm_10
-
-
 OMPFLAGS =
 # gcc with OpenMP
 #OMPFLAGS = -fopenmp
@@ -37,12 +32,34 @@ OMPFLAGS =
 # icc with OpenMP (for make target linux-x86-64-icc)
 #ICCOMPFLAGS = -openmp
 
-CFLAGS = -c -Wall -O2 -fomit-frame-pointer -I/usr/local/include $(OMPFLAGS) $(JOHN_CFLAGS)
+# NSS (and NSPR) flag, un-comment if installed (needed for mozilla format)
+#HAVE_NSS = -DHAVE_NSS
+
+# Change sm_10 to sm_20 if you have Fermi support (400 series or later)
+NVCC_FLAGS = -c -Xptxas -v -arch sm_10
+CUDAPATH = /usr/local/cuda/lib
+CUDA64PATH = /usr/local/cuda/lib64
+
+ifdef NVIDIA_CUDA
+OCLROOT = $(NVIDIA_CUDA)
+else
+OCLROOT = /usr/local/cuda
+endif
+ifdef AMDAPPSDKROOT
+AMDAPP = -DAMDAPPSDK
+OCLROOT = $(AMDAPPSDKROOT)
+endif
+ifdef ATISTREAMSDKROOT
+AMDAPP = -DAMDAPPSDK
+OCLROOT = $(ATISTREAMSDKROOT)
+endif
+
+CFLAGS = -c -Wall -O2 -fomit-frame-pointer -I/usr/local/include $(HAVE_NSS) $(OMPFLAGS) $(JOHN_CFLAGS) $(AMDAPP) `pkg-config --cflags nss`
 # -DHAVE_SKEY
 # CFLAGS for use on the main john.c file only
 CFLAGS_MAIN = $(CFLAGS)
 ASFLAGS = -c $(JOHN_CFLAGS) $(OMPFLAGS)
-LDFLAGS = -s -L/usr/local/lib -L/usr/local/ssl/lib -lssl -lcrypto -lm -lz $(JOHN_CFLAGS) $(OMPFLAGS)
+LDFLAGS = -s -L/usr/local/lib -L/usr/local/ssl/lib -lssl -lcrypto -lm -lz $(JOHN_CFLAGS) $(OMPFLAGS) `pkg-config --libs nss`
 # -lskey
 LDFLAGS_SOLARIS = -lrt -lnsl -lsocket -lm -lz -lcrypto -lssl
 LDFLAGS_MKV = -s -lm
@@ -88,6 +105,7 @@ JOHN_OBJS = \
 	md4.o \
 	dynamic_fmt.o dynamic_parser.o dynamic_preloads.o dynamic_utils.o \
 	rawSHA224_fmt.o rawSHA256_fmt.o rawSHA384_fmt.o rawSHA512_fmt.o \
+	hmacMD5_fmt.o hmacSHA1_fmt.o \
 	hmacSHA224_fmt.o hmacSHA256_fmt.o hmacSHA384_fmt.o hmacSHA512_fmt.o \
 	XSHA512_fmt.o \
 	hmailserver_fmt.o \
@@ -102,6 +120,8 @@ JOHN_OBJS = \
 	unrarcmd.o unrarfilter.o unrarhlp.o unrar.o unrarppm.o unrarvm.o \
 	rar_fmt.o rar2john.o \
 	zip_fmt.o zip2john.o gladman_hmac.o gladman_pwd2key.o \
+	racf2john.o \
+	mozilla_fmt.o KeyDBCracker.o mozilla_des.o lowpbe.o mozilla2john.o \
 	$(PLUGFORMATS_OBJS) \
 	plugin.o \
 	dummy.o \
@@ -118,8 +138,10 @@ JOHN_OBJS = \
 
 OCL_OBJS = \
 	common-opencl.o opencl_mysqlsha1_fmt.o \
-	cryptmd5_opencl_fmt.o phpass_opencl_fmt.o opencl_rawsha1_fmt.o \
-	opencl_nt_fmt.o opencl_rawmd5_fmt.o  opencl_nsldaps_fmt.o
+	opencl_cryptmd5_fmt.o opencl_phpass_fmt.o opencl_rawsha1_fmt.o \
+	opencl_nt_fmt.o opencl_rawmd5_fmt.o opencl_nsldaps_fmt.o \
+	opencl_cryptsha512_fmt.o opencl_MSCASH2_fmt.o opencl_wpapsk_fmt.o \
+	opencl_xsha512_fmt.o
 
 CUDA_OBJS = \
 	cuda_common.o \
@@ -130,7 +152,9 @@ CUDA_OBJS = \
 	cuda_mscash2_fmt.o cuda_mscash2.o \
 	cuda_rawsha256_fmt.o cuda_rawsha256.o \
 	cuda_rawsha224_fmt.o cuda_rawsha224.o \
-	cuda_mscash_fmt.o cuda_mscash.o
+	cuda_mscash_fmt.o cuda_mscash.o \
+	cuda_xsha512_fmt.o cuda_xsha512.o \
+	cuda_wpapsk_fmt.o cuda_wpapsk.o
 
 BENCH_DES_OBJS_ORIG = \
 	DES_fmt.o DES_std.o
@@ -174,21 +198,24 @@ GENMKVPWD_OBJS = \
 PROJ = ../run/john ../run/unshadow ../run/unafs ../run/unique ../run/undrop \
 	../run/ssh2john ../run/pdf2john ../run/rar2john ../run/zip2john \
 	../run/genmkvpwd ../run/mkvcalcproba ../run/calc_stat \
-	../run/tgtsnarf
+	../run/tgtsnarf ../run/racf2john ../run/mozilla2john
 PROJ_DOS = ../run/john.bin ../run/john.com \
 	../run/unshadow.com ../run/unafs.com ../run/unique.com \
 	../run/undrop.com \
-	../run/ssh2john.com ../run/pdf2john.com ../run/rar2john.com ../run/zip2john
+	../run/ssh2john.com ../run/pdf2john.com ../run/rar2john.com ../run/zip2john \
+	../run/racf2john.com ../run/mozilla2john.com
 PROJ_WIN32 = ../run/john.exe \
 	../run/unshadow.exe ../run/unafs.exe ../run/unique.exe \
 	../run/undrop.exe \
 	../run/ssh2john.exe ../run/pdf2john.exe ../run/rar2john.exe ../run/zip2john.exe \
-	../run/genmkvpwd.exe ../run/mkvcalcproba.exe ../run/calc_stat.exe
+	../run/genmkvpwd.exe ../run/mkvcalcproba.exe ../run/calc_stat.exe \
+	../run/racf2john.exe ../run/mozilla2john.exe
 PROJ_WIN32_MINGW = ../run/john-mingw.exe \
 	../run/unshadow.exe ../run/unafs.exe ../run/unique.exe \
 	../run/undrop.exe \
 	../run/ssh2john.exe ../run/pdf2john.exe ../run/rar2john.exe ../run/zip2john.exe \
-	../run/genmkvpwd.exe ../run/mkvcalcproba.exe ../run/calc_stat.exe
+	../run/genmkvpwd.exe ../run/mkvcalcproba.exe ../run/calc_stat.exe \
+	../run/racf2john.exe ../run/mozilla2john.exe
 
 default:
 	@echo "To build John the Ripper, type:"
@@ -306,18 +333,32 @@ linux-x86-64-gpu:
 	@echo "#define JOHN_BLD" '"'$@'"' > john_build_rule.h
 	$(MAKE) $(PROJ) \
 		JOHN_OBJS="$(JOHN_OBJS) $(OCL_OBJS) $(CUDA_OBJS) c3_fmt.o x86-64.o sse-intrinsics-64.o" \
+<<<<<<< HEAD
 		CFLAGS="$(CFLAGS) -I$(OCLROOT)/include -DHAVE_CRYPT -DCL_VERSION_1_0 -DHAVE_CUDA -DHAVE_DL" \
 		LDFLAGS="$(LDFLAGS) -L$(OCLROOT)/lib/x86_64 -L$(OCLROOT)/lib64 -L$(CUDA64PATH) -lcrypt -lOpenCL -ldl -lcudart"
 	$(CP) opencl/*.cl ../run/
+=======
+		CFLAGS="$(CFLAGS) -I$(OCLROOT)/include -DHAVE_CRYPT -DCL_VERSION_1_0 -DHAVE_CUDA -DHAVE_DL -DUSING_ICC_S_FILE" \
+		LDFLAGS="$(LDFLAGS) -L$(OCLROOT)/lib/x86_64 -L$(OCLROOT)/lib64 -L$(CUDA64PATH) -lcrypt -lOpenCL -ldl -lcudart"
+	$(CP) opencl/*.cl ../run/
+	$(CP) opencl_cryptsha512.h ../run/
+>>>>>>> 46857773aae15e2f7c70903db0bd9e70f250bb4c
 
 linux-x86-64-opencl:
 	$(LN) x86-64.h arch.h
 	@echo "#define JOHN_BLD" '"'$@'"' > john_build_rule.h
 	$(MAKE) $(PROJ) \
 		JOHN_OBJS="$(JOHN_OBJS) $(OCL_OBJS) c3_fmt.o x86-64.o sse-intrinsics-64.o" \
+<<<<<<< HEAD
 		CFLAGS="$(CFLAGS) -I$(OCLROOT)/include -I$(OCLROOT)/include -DHAVE_CRYPT -DCL_VERSION_1_0 -DHAVE_DL" \
 		LDFLAGS="$(LDFLAGS) -L$(OCLROOT)/lib/x86_64 -L$(OCLROOT)/lib64 -lcrypt -lOpenCL -ldl"
 	$(CP) opencl/*.cl ../run/
+=======
+		CFLAGS="$(CFLAGS) -I$(OCLROOT)/include -DHAVE_CRYPT -DCL_VERSION_1_0 -DHAVE_DL -DUSING_ICC_S_FILE" \
+		LDFLAGS="$(LDFLAGS) -L$(OCLROOT)/lib/x86_64 -L$(OCLROOT)/lib64 -lcrypt -lOpenCL -ldl"
+	$(CP) opencl/*.cl ../run/
+	$(CP) opencl_cryptsha512.h ../run/
+>>>>>>> 46857773aae15e2f7c70903db0bd9e70f250bb4c
 
 linux-x86-64-cuda:
 	$(LN) x86-64.h arch.h
@@ -431,9 +472,14 @@ linux-x86-gpu:
 	@echo "#define JOHN_BLD" '"'$@'"' > john_build_rule.h
 	$(MAKE) $(PROJ) \
 		JOHN_OBJS="$(JOHN_OBJS) $(OCL_OBJS) $(CUDA_OBJS) c3_fmt.o x86.o x86-sse.o sha1-mmx.o md4-mmx.o md5-mmx.o sse-intrinsics-32.o" \
+<<<<<<< HEAD
 		CFLAGS="$(CFLAGS) -I$(OCLROOT)/include -DHAVE_CRYPT -DCL_VERSION_1_0 -DHAVE_CUDA -DHAVE_DL" \
+=======
+		CFLAGS="$(CFLAGS) -I$(OCLROOT)/include -DHAVE_CRYPT -DCL_VERSION_1_0 -DHAVE_CUDA -DHAVE_DL -DUSING_ICC_S_FILE" \
+>>>>>>> 46857773aae15e2f7c70903db0bd9e70f250bb4c
 		LDFLAGS="$(LDFLAGS) -L$(OCLROOT)/lib/x86 -L$(OCLROOT)/lib -L$(CUDAPATH) -lcrypt -lOpenCL -ldl -lcudart"
 	$(CP) opencl/*.cl ../run/
+	$(CP) opencl_cryptsha512.h ../run/
 	#/bin/sh ./setup-opencl-stuff.sh
 
 linux-x86-opencl:
@@ -441,9 +487,14 @@ linux-x86-opencl:
 	@echo "#define JOHN_BLD" '"'$@'"' > john_build_rule.h
 	$(MAKE) $(PROJ) \
 		JOHN_OBJS="$(JOHN_OBJS) $(OCL_OBJS) c3_fmt.o x86.o x86-sse.o sha1-mmx.o md4-mmx.o md5-mmx.o sse-intrinsics-32.o" \
+<<<<<<< HEAD
 		CFLAGS="$(CFLAGS) -I$(OCLROOT)/include -DHAVE_CRYPT -DCL_VERSION_1_0 -DHAVE_DL" \
+=======
+		CFLAGS="$(CFLAGS) -I$(OCLROOT)/include -DHAVE_CRYPT -DCL_VERSION_1_0 -DHAVE_DL -DUSING_ICC_S_FILE" \
+>>>>>>> 46857773aae15e2f7c70903db0bd9e70f250bb4c
 		LDFLAGS="$(LDFLAGS) -L$(OCLROOT)/lib/x86 -L$(OCLROOT)/lib -lcrypt -lOpenCL -ldl"
 	$(CP) opencl/*.cl ../run/
+	$(CP) opencl_cryptsha512.h ../run/
 	#/bin/sh ./setup-opencl-stuff.sh
 
 linux-x86-cuda:
@@ -451,7 +502,7 @@ linux-x86-cuda:
 	@echo "#define JOHN_BLD" '"'$@'"' > john_build_rule.h
 	$(MAKE) $(PROJ) \
 		JOHN_OBJS="$(JOHN_OBJS) $(CUDA_OBJS) c3_fmt.o x86.o x86-sse.o sha1-mmx.o md4-mmx.o md5-mmx.o sse-intrinsics-32.o" \
-		CFLAGS="$(CFLAGS) -DHAVE_CRYPT -DHAVE_DL -DHAVE_CUDA" \
+		CFLAGS="$(CFLAGS) -DHAVE_CRYPT -DHAVE_DL -DHAVE_CUDA -DUSING_ICC_S_FILE" \
 		LDFLAGS="$(LDFLAGS) -L$(CUDAPATH) -lcrypt -ldl -lcudart"
 
 linux-x86-sse2:
@@ -459,7 +510,7 @@ linux-x86-sse2:
 	@echo "#define JOHN_BLD" '"'$@'"' > john_build_rule.h
 	$(MAKE) $(PROJ) \
 		JOHN_OBJS="$(JOHN_OBJS) c3_fmt.o x86.o x86-sse.o sha1-mmx.o md4-mmx.o md5-mmx.o sse-intrinsics.o" \
-		CFLAGS="$(CFLAGS) -DHAVE_CRYPT -DHAVE_DL" \
+		CFLAGS="$(CFLAGS) -msse2 -DHAVE_CRYPT -DHAVE_DL" \
 		LDFLAGS="$(LDFLAGS) -lcrypt -ldl"
 
 linux-x86-sse2i:
@@ -949,11 +1000,19 @@ macosx-x86-64-opencl:
 	$(LN) x86-64.h arch.h
 	@echo "#define JOHN_BLD" '"'$@'"' > john_build_rule.h
 	$(MAKE) $(PROJ) \
-		JOHN_OBJS="$(JOHN_OBJS) $(OCL_OBJS) x86-64.o sse-intrinsics-64.o" \
+		JOHN_OBJS="$(JOHN_OBJS) $(OCL_OBJS) x86-64.o sse-intrinsics.o" \
 		ASFLAGS="$(ASFLAGS) -m64 -DUNDERSCORES -DBSD -DALIGN_LOG" \
+<<<<<<< HEAD
 		CFLAGS="$(CFLAGS) -m64  -I$(OCLROOT)/include -I$(OCLROOT)/include  -DBSD -DCL_VERSION_1_0" \
 		LDFLAGS="$(LDFLAGS) -m64 -L$(OCLROOT)/lib/x86_64 -L$(NVIDIA_CUDA)/lib64 -framework OpenCL"
 	$(CP) opencl/*.cl ../run/
+=======
+		CFLAGS="$(CFLAGS) -m64 -I$(OCLROOT)/include -DBSD -DCL_VERSION_1_0" \
+		LDFLAGS="$(LDFLAGS) -m64 -L$(OCLROOT)/lib/x86_64 -L$(NVIDIA_CUDA)/lib64 -framework OpenCL"
+	$(CP) opencl/*.cl ../run/
+	$(CP) opencl_cryptsha512.h ../run/
+	#/bin/sh ./setup-opencl-stuff.sh
+>>>>>>> 46857773aae15e2f7c70903db0bd9e70f250bb4c
 
 macosx-x86-64:
 	$(LN) x86-64.h arch.h
@@ -1359,6 +1418,20 @@ cuda_rawsha224.o:  cuda_rawsha256.h cuda/rawsha256.cu cuda_common.o
 cuda_rawsha224_fmt.o: cuda_rawsha224.o cuda_rawsha256_fmt.c cuda_rawsha256.h
 	$(CC)  $(CFLAGS) -DSHA224 cuda_rawsha256_fmt.c -o cuda_rawsha224_fmt.o
 
+cuda_xsha512.o: cuda_xsha512.h cuda/xsha512.cu cuda_common.o
+	cd cuda; nvcc $(NVCC_FLAGS) xsha512.cu
+	mv cuda/xsha512.o cuda_xsha512.o
+
+cuda_xsha512_fmt.o: cuda_xsha512.o cuda_xsha512_fmt.c cuda_xsha512.h
+	$(CC) $(CFLAGS) cuda_xsha512_fmt.c -o cuda_xsha512_fmt.o
+
+cuda_wpapsk.o:  cuda_common.o
+	cd cuda; nvcc $(NVCC_FLAGS) wpapsk.cu
+	mv cuda/wpapsk.o cuda_wpapsk.o
+
+cuda_wpapsk_fmt.o: cuda_wpapsk.o
+	$(CC)  $(CFLAGS) cuda_wpapsk_fmt.c
+
 ../run/john: $(JOHN_OBJS)
 	$(LD) $(JOHN_OBJS) $(LDFLAGS) -o ../run/john
 
@@ -1390,6 +1463,16 @@ cuda_rawsha224_fmt.o: cuda_rawsha224.o cuda_rawsha256_fmt.c cuda_rawsha256.h
 	$(RM) ../run/rar2john
 	ln -s john ../run/rar2john
 
+../run/mozilla2john: ../run/john
+ifdef HAVE_NSS
+	$(RM) ../run/mozilla2john
+	ln -s john ../run/mozilla2john
+endif
+
+../run/racf2john: ../run/john
+	$(RM) ../run/racf2john
+	ln -s john ../run/racf2john
+
 ../run/unique: ../run/john
 	$(RM) ../run/unique
 	ln -s john ../run/unique
@@ -1419,6 +1502,14 @@ cuda_rawsha224_fmt.o: cuda_rawsha224.o cuda_rawsha256_fmt.c cuda_rawsha256.h
 
 ../run/rar2john.com: john.com
 	copy john.com ..\run\rar2john.com
+
+../run/mozilla2john.com: john.com
+ifdef HAVE_NSS
+	copy john.com ..\run\mozilla2john.com
+endif
+
+../run/racf2john.com: john.com
+	copy john.com ..\run\racf2john.com
 
 ../run/zip2john.com: john.com
 	copy john.com ..\run\zip2john.com
@@ -1473,6 +1564,16 @@ john.com: john.asm
 	$(CC) symlink.c -o ../run/rar2john.exe
 	strip ../run/rar2john.exe
 
+../run/mozilla2john.exe: symlink.c
+ifdef HAVE_NSS
+	$(CC) symlink.c -o ../run/mozilla2john.exe
+	strip ../run/mozilla2john.exe
+endif
+
+../run/racf2john.exe: symlink.c
+	$(CC) symlink.c -o ../run/racf2john.exe
+	strip ../run/racf2john.exe
+
 ../run/zip2john.exe: symlink.c
 	$(CC) symlink.c -o ../run/zip2john.exe
 	strip ../run/zip2john.exe
@@ -1498,6 +1599,15 @@ john.com: john.asm
 
 ../run/calc_stat.exe: calc_stat.o
 	$(LD) calc_stat.o $(LDFLAGS_MKV) -o ../run/calc_stat.exe
+
+SIPdump: SIPdump.o
+	$(LD) SIPdump.o $(LDFLAGS) -lpcap -o ../run/SIPdump
+
+vncpcap2john:
+	g++ vncpcap2john.cpp -lpcap -o ../run/vncpcap2john
+
+office2john:
+	$(CC) `xml2-config --cflags` `pkg-config --cflags libgsf-1` office2john.c common.o base64.o `pkg-config --libs libgsf-1` `xml2-config --libs` -o ../run/office2john
 
 ../run/tgtsnarf: tgtsnarf.o
 	$(LD) tgtsnarf.o $(LDFLAGS) -o ../run/tgtsnarf
@@ -1571,7 +1681,7 @@ clean:
 	$(RM) $(PROJ) $(PROJ_DOS) $(PROJ_WIN32) $(PROJ_WIN32_MINGW)
 	$(RM) ../run/john.exe john-macosx-* *.o *.bak core ../run/*.cl
 	$(RM) detect bench para-bench generic.h arch.h tmp.s
-	$(RM) cuda/*.o cuda/*~ *~
+	$(RM) cuda/*.o cuda/*~ *~ ../run/SIPdump
 	$(RM) fmt_registers.h fmt_externs.h john_build_rule.h
 	$(CP) $(NULL) Makefile.dep
 

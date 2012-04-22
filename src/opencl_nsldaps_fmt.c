@@ -23,6 +23,7 @@
 #include "params.h"
 #include "formats.h"
 #include "common.h"
+#include "config.h"
 
 #include "sha.h"
 #include "base64.h"
@@ -42,11 +43,17 @@
 #define NUM_BLOCKS			5
 
 #define PLAINTEXT_LENGTH		32
+<<<<<<< HEAD
 #define SSHA_NUM_KEYS         		1024*2048*4
+=======
+#define SSHA_NUM_KEYS         		512*2048*4
+>>>>>>> 46857773aae15e2f7c70903db0bd9e70f250bb4c
 
 #define MIN_KEYS_PER_CRYPT              1024
 #define MAX_KEYS_PER_CRYPT		SSHA_NUM_KEYS
 
+#define LWS_CONFIG			"ssha_LWS"
+#define KPC_CONFIG			"ssha_KPC"
 
 #ifndef uint32_t
 #define uint32_t unsigned int
@@ -152,7 +159,9 @@ static void find_best_workgroup(void)
 	printf("\n");
 	#endif
 	printf("Optimal local work size %d\n",(int)local_work_size);
-        printf("(to avoid this test on next run do export LWS=%d)\n",(int)local_work_size);
+	printf("(to avoid this test on next run, put \""
+           LWS_CONFIG " = %d\" in john.conf, section [" SECTION_OPTIONS
+           SUBSECTION_OPENCL "])\n", (int)local_work_size);
 	clReleaseCommandQueue(queue_prof);
 }
 
@@ -211,6 +220,10 @@ static void create_clobj(int kpc){
 	datai[0] = PLAINTEXT_LENGTH;
 	datai[1] = kpc;
     	global_work_size = kpc;
+
+	/* We set this here and never again. Used to be in crypt_all() */
+	HANDLE_CLERROR(clEnqueueWriteBuffer(queue[gpu_id], data_info, CL_FALSE, 0,
+	    sizeof(unsigned int) * 2, datai, 0, NULL, NULL), "failed in clEnqueueWriteBuffer data_info");
 }
 
 static void release_clobj(void){
@@ -258,7 +271,6 @@ static void find_best_kpc(void){
 	for (i=0; i < num; i++){
 		memcpy(&(saved_plain[i*PLAINTEXT_LENGTH]),"abacaeaf",PLAINTEXT_LENGTH);
 	}
-        clEnqueueWriteBuffer(queue_prof, data_info, CL_TRUE, 0, sizeof(unsigned int)*2, datai, 0, NULL, NULL);
 	clEnqueueWriteBuffer(queue_prof, mysalt, CL_TRUE, 0, SALT_SIZE, saved_salt, 0, NULL, NULL);
 	clEnqueueWriteBuffer(queue_prof, buffer_keys, CL_TRUE, 0, (PLAINTEXT_LENGTH) * num, saved_plain, 0, NULL, NULL);
     	ret_code = clEnqueueNDRangeKernel( queue_prof, crypt_kernel, 1, NULL, &global_work_size, &local_work_size, 0, NULL, &myEvent);
@@ -282,7 +294,9 @@ static void find_best_kpc(void){
 	free(tmpbuffer);
 	clReleaseCommandQueue(queue_prof);
     }
-    printf("Optimal keys per crypt %d\n(to avoid this test on next run do export KPC=%d)\n",optimal_kpc,optimal_kpc);
+    printf("Optimal keys per crypt %d\n(to avoid this test on next run, put \""
+           KPC_CONFIG " = %d\" in john.conf, section [" SECTION_OPTIONS
+           SUBSECTION_OPENCL "])\n", optimal_kpc, optimal_kpc);
     max_keys_per_crypt = optimal_kpc;
     release_clobj();
     create_clobj(optimal_kpc);
@@ -290,33 +304,42 @@ static void find_best_kpc(void){
 
 static void fmt_ssha_init(struct fmt_main *pFmt)
 {
-	char *kpc;
-	opencl_init("$JOHN/ssha_opencl_kernel.cl", gpu_id, platform_id);
+	char *temp;
+	opencl_init("$JOHN/ssha_kernel.cl", gpu_id, platform_id);
 
 	// create kernel to execute
 	crypt_kernel = clCreateKernel(program[gpu_id], "sha1_crypt_kernel", &ret_code);
 	HANDLE_CLERROR(ret_code, "Error creating kernel. Double-check kernel name?");
 
-	if( ((kpc = getenv("LWS")) == NULL) || (atoi(kpc) == 0)) {
+	if ((temp = cfg_get_param(SECTION_OPTIONS, SUBSECTION_OPENCL,
+	                          LWS_CONFIG)))
+		local_work_size = atoi(temp);
+
+	if ((temp = getenv("LWS")))
+		local_work_size = atoi(temp);
+
+	if (!local_work_size) {
 		create_clobj(SSHA_NUM_KEYS);
 		find_best_workgroup();
 		release_clobj();
-	}else {
-		local_work_size = atoi(kpc);
 	}
-	if( (kpc = getenv("KPC")) == NULL){
+
+	if ((temp = cfg_get_param(SECTION_OPTIONS, SUBSECTION_OPENCL,
+	                          KPC_CONFIG)))
+		max_keys_per_crypt = atoi(temp);
+	else
+		max_keys_per_crypt = SSHA_NUM_KEYS;
+
+	if ((temp = getenv("KPC")))
+		max_keys_per_crypt = atoi(temp);
+
+	if (max_keys_per_crypt) {
+		create_clobj(max_keys_per_crypt);
+	} else {
+		//user chose to die of boredom
 		max_keys_per_crypt = SSHA_NUM_KEYS;
 		create_clobj(SSHA_NUM_KEYS);
-	} else {
-		if (atoi(kpc) == 0){
-			//user chose to die of boredom
-			max_keys_per_crypt = SSHA_NUM_KEYS;
-			create_clobj(SSHA_NUM_KEYS);
-			find_best_kpc();
-		} else {
-			max_keys_per_crypt = atoi(kpc);
-			create_clobj(max_keys_per_crypt);
-		}
+		find_best_kpc();
 	}
 	printf("Local work size (LWS) %d, Keys per crypt (KPC) %d\n",(int)local_work_size,max_keys_per_crypt);
 	pFmt->params.max_keys_per_crypt = max_keys_per_crypt;
@@ -378,6 +401,10 @@ static void set_key(char *key, int index){
 
 static void set_salt(void *salt){
 	memcpy(saved_salt, salt, SALT_SIZE);
+
+	/* Used to be in crypt_all() - bad for single salt */
+	HANDLE_CLERROR(clEnqueueWriteBuffer(queue[gpu_id], mysalt, CL_FALSE, 0, SALT_SIZE,
+	    saved_salt, 0, NULL, NULL), "failed in clEnqueueWriteBuffer mysalt");
 }
 
 static char *get_key(int index) {
@@ -428,6 +455,7 @@ static int cmp_exact(char *source, int count){
 static void crypt_all(int count)
 {
 	cl_int code;
+<<<<<<< HEAD
 	code = clEnqueueWriteBuffer(queue[gpu_id], data_info, CL_TRUE, 0,
 	    sizeof(unsigned int) * 2, datai, 0, NULL, NULL);
 	HANDLE_CLERROR(code, "failed in clEnqueueWriteBuffer data_info");
@@ -435,6 +463,8 @@ static void crypt_all(int count)
 	code = clEnqueueWriteBuffer(queue[gpu_id], mysalt, CL_TRUE, 0, SALT_SIZE,
 	    saved_salt, 0, NULL, NULL);
 	HANDLE_CLERROR(code, "failed in clEnqueueWriteBuffer mysalt");
+=======
+>>>>>>> 46857773aae15e2f7c70903db0bd9e70f250bb4c
 
 	code = clEnqueueWriteBuffer(queue[gpu_id], buffer_keys, CL_TRUE, 0,
 	    (PLAINTEXT_LENGTH) * max_keys_per_crypt, saved_plain, 0, NULL, NULL);

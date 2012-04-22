@@ -22,7 +22,15 @@
 #define ARCH_ALLOWS_UNALIGNED		1
 #define ARCH_INDEX(x)			((unsigned int)(unsigned char)(x))
 
+<<<<<<< HEAD
 #define OS_TIMER			0
+=======
+#if defined(__CYGWIN32__) || defined(__BEOS__) || defined(__MINGW32__) || defined(_MSC_VER) || (defined(AMDAPPSDK) && defined(CL_VERSION_1_0))
+#define OS_TIMER			0
+#else
+#define OS_TIMER			1
+#endif
+>>>>>>> 46857773aae15e2f7c70903db0bd9e70f250bb4c
 #define OS_FLOCK			1
 
 #define CPU_DETECT			0
@@ -198,7 +206,7 @@
 #elif defined(__GNUC__) && GCC_VERSION < 40500	// 4.5.0
 #define MD5_SSE_PARA			3
 #define MD5_N_STR			"12x"
-#elif defined(__GNUC__) && GCC_VERSION < 40600	// 4.6.0
+#elif defined(__GNUC__) && (GCC_VERSION < 40600 || defined(__XOP__)) // 4.6.0
 #define MD5_SSE_PARA			2
 #define MD5_N_STR			"8x"
 #else
@@ -220,7 +228,7 @@
 #elif defined(__GNUC__) && GCC_VERSION < 40500	// 4.5.0
 #define MD4_SSE_PARA			3
 #define MD4_N_STR			"12x"
-#elif defined(__GNUC__) && GCC_VERSION < 40600	// 4.6.0
+#elif defined(__GNUC__) && (GCC_VERSION < 40600 || defined(__XOP__)) // 4.6.0
 #define MD4_SSE_PARA			2
 #define MD4_N_STR			"8x"
 #else

@@ -14,8 +14,10 @@
 #include "formats.h"
 #include "path.h"
 
-#define MAXGPUS	4
-#define MAX_PLATFORMS	4
+#define MAXGPUS	8
+#define MAX_PLATFORMS	8
+#define SUBSECTION_OPENCL	":OpenCL"
+
 /* Comment if you do not want to see OpenCL warnings during kernel compilation */
 #define REPORT_OPENCL_WARNINGS
 
@@ -33,6 +35,11 @@ size_t max_group_size;
 
 void opencl_init(char *kernel_filename, unsigned int dev_id,
                  unsigned int platform_id);
+
+cl_ulong get_local_memory_size(int dev_id);
+size_t get_max_work_group_size(int dev_id);
+cl_uint get_max_compute_units(int dev_id);
+cl_device_type get_device_type(int dev_id);
 
 char *get_error_name(cl_int cl_error);
 
