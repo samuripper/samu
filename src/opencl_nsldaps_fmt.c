@@ -43,11 +43,7 @@
 #define NUM_BLOCKS			5
 
 #define PLAINTEXT_LENGTH		32
-<<<<<<< HEAD
 #define SSHA_NUM_KEYS         		1024*2048*4
-=======
-#define SSHA_NUM_KEYS         		512*2048*4
->>>>>>> 46857773aae15e2f7c70903db0bd9e70f250bb4c
 
 #define MIN_KEYS_PER_CRYPT              1024
 #define MAX_KEYS_PER_CRYPT		SSHA_NUM_KEYS
@@ -455,7 +451,6 @@ static int cmp_exact(char *source, int count){
 static void crypt_all(int count)
 {
 	cl_int code;
-<<<<<<< HEAD
 	code = clEnqueueWriteBuffer(queue[gpu_id], data_info, CL_TRUE, 0,
 	    sizeof(unsigned int) * 2, datai, 0, NULL, NULL);
 	HANDLE_CLERROR(code, "failed in clEnqueueWriteBuffer data_info");
@@ -463,8 +458,6 @@ static void crypt_all(int count)
 	code = clEnqueueWriteBuffer(queue[gpu_id], mysalt, CL_TRUE, 0, SALT_SIZE,
 	    saved_salt, 0, NULL, NULL);
 	HANDLE_CLERROR(code, "failed in clEnqueueWriteBuffer mysalt");
-=======
->>>>>>> 46857773aae15e2f7c70903db0bd9e70f250bb4c
 
 	code = clEnqueueWriteBuffer(queue[gpu_id], buffer_keys, CL_TRUE, 0,
 	    (PLAINTEXT_LENGTH) * max_keys_per_crypt, saved_plain, 0, NULL, NULL);
