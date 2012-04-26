@@ -234,6 +234,10 @@ static void create_clobj(int kpc){
 	datai[0] = PLAINTEXT_LENGTH;
 	datai[1] = kpc;
     	global_work_size = kpc;
+
+	/* We set this here and never again. Used to be in crypt_all() */
+	HANDLE_CLERROR(clEnqueueWriteBuffer(queue[gpu_id], data_info, CL_FALSE, 0,
+	    sizeof(unsigned int) * 2, datai, 0, NULL, NULL), "failed in clEnqueueWriteBuffer data_info");
 }
 
 static void release_clobj(void){
@@ -414,6 +418,10 @@ static void set_key(char *key, int index){
 
 static void set_salt(void *salt){
 	memcpy(saved_salt, salt, SALT_SIZE);
+
+	/* Used to be in crypt_all() - bad for single salt */
+	HANDLE_CLERROR(clEnqueueWriteBuffer(queue[gpu_id], mysalt, CL_FALSE, 0, SALT_SIZE,
+	    saved_salt, 0, NULL, NULL), "failed in clEnqueueWriteBuffer mysalt");
 }
 
 static char *get_key(int index) {

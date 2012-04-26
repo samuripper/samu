@@ -102,6 +102,11 @@ extern struct fmt_main fmt_cryptsha512;
 extern struct fmt_main fmt_SKEY;
 #endif
 
+#ifdef HAVE_NSS
+extern struct fmt_main mozilla_fmt;
+extern int mozilla2john(int argc, char **argv);
+#endif
+
 #ifdef CL_VERSION_1_0
 extern struct fmt_main fmt_opencl_NSLDAPS;
 extern struct fmt_main fmt_opencl_rawMD5;
@@ -111,7 +116,10 @@ extern struct fmt_main fmt_opencl_cryptMD5;
 extern struct fmt_main fmt_opencl_phpass;
 extern struct fmt_main fmt_opencl_mysqlsha1;
 extern struct fmt_main fmt_opencl_cryptsha512;
-#endif 
+extern struct fmt_main fmt_opencl_mscash2;
+extern struct fmt_main fmt_opencl_wpapsk;
+extern struct fmt_main fmt_opencl_xsha512;
+#endif
 #ifdef HAVE_CUDA
 extern struct fmt_main fmt_cuda_cryptmd5;
 extern struct fmt_main fmt_cuda_phpass;
@@ -121,6 +129,8 @@ extern struct fmt_main fmt_cuda_mscash;
 extern struct fmt_main fmt_cuda_mscash2;
 extern struct fmt_main fmt_cuda_rawsha256;
 extern struct fmt_main fmt_cuda_rawsha224;
+extern struct fmt_main fmt_cuda_xsha512;
+extern struct fmt_main fmt_cuda_wpapsk;
 #endif
 
 extern struct fmt_main fmt_ssh;
@@ -130,6 +140,9 @@ extern struct fmt_main zip_fmt;
 
 #include "fmt_externs.h"
 
+extern struct fmt_main fmt_hmacMD5;
+extern struct fmt_main fmt_hmacSHA1;
+
 extern int unique(int argc, char **argv);
 extern int unshadow(int argc, char **argv);
 extern int unafs(int argc, char **argv);
@@ -138,6 +151,7 @@ extern int undrop(int argc, char **argv);
 extern int ssh2john(int argc, char **argv);
 extern int pdf2john(int argc, char **argv);
 extern int rar2john(int argc, char **argv);
+extern int racf2john(int argc, char **argv);
 #endif
 extern int zip2john(int argc, char **argv);
 
@@ -178,6 +192,9 @@ static void john_register_all(void)
 
 #include "fmt_registers.h"
 
+	john_register_one(&fmt_hmacMD5);
+	john_register_one(&fmt_hmacSHA1);
+
 #if OPENSSL_VERSION_NUMBER >= 0x00908000
 	john_register_one(&fmt_rawSHA224);
 	john_register_one(&fmt_rawSHA256);
@@ -200,6 +217,10 @@ static void john_register_all(void)
 	john_register_one(&fmt_drupal7);
 	john_register_one(&fmt_cryptsha256);
 	john_register_one(&fmt_cryptsha512);
+#endif
+
+#ifdef HAVE_NSS
+	john_register_one(&mozilla_fmt);
 #endif
 
 #ifdef HAVE_CRYPT
@@ -225,7 +246,10 @@ static void john_register_all(void)
 	john_register_one(&fmt_opencl_phpass);
 	john_register_one(&fmt_opencl_mysqlsha1);
 	john_register_one(&fmt_opencl_cryptsha512);
-#endif 
+	john_register_one(&fmt_opencl_mscash2);
+	john_register_one(&fmt_opencl_wpapsk);
+	john_register_one(&fmt_opencl_xsha512);
+#endif
 
 #ifdef HAVE_CUDA
 	john_register_one(&fmt_cuda_cryptmd5);
@@ -236,8 +260,11 @@ static void john_register_all(void)
 	john_register_one(&fmt_cuda_mscash2);
 	john_register_one(&fmt_cuda_rawsha256);
 	john_register_one(&fmt_cuda_rawsha224);
+	john_register_one(&fmt_cuda_xsha512);
+	john_register_one(&fmt_cuda_wpapsk);
+
 #endif
-	
+
 #ifdef HAVE_DL
 	if (options.fmt_dlls)
 	register_dlls ( options.fmt_dlls,
@@ -731,6 +758,18 @@ int main(int argc, char **argv)
 	if (!strcmp(name, "rar2john")) {
 		CPU_detect_or_fallback(argv, 0);
 		return rar2john(argc, argv);
+	}
+
+	if (!strcmp(name, "racf2john")) {
+		CPU_detect_or_fallback(argv, 0);
+		return racf2john(argc, argv);
+	}
+#endif
+
+#ifdef HAVE_NSS
+	if (!strcmp(name, "mozilla2john")) {
+		CPU_detect_or_fallback(argv, 0);
+		return mozilla2john(argc, argv);
 	}
 #endif
 
