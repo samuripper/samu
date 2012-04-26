@@ -972,10 +972,7 @@ macosx-x86-64-opencl:
 		LDFLAGS="$(LDFLAGS) -m64 -L$(OCLROOT)/lib/x86_64 -L$(NVIDIA_CUDA)/lib64 -framework OpenCL"
 	$(CP) opencl/*.cl ../run/
 	$(CP) opencl_cryptsha512.h ../run/
-<<<<<<< HEAD
-=======
 	#/bin/sh ./setup-opencl-stuff.sh
->>>>>>> 1b459639abbc71f40eab59590082d2d6b84135c8
 
 macosx-x86-64:
 	$(LN) x86-64.h arch.h
