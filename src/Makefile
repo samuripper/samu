@@ -36,7 +36,7 @@ OMPFLAGS =
 #HAVE_NSS = -DHAVE_NSS
 
 # Change sm_10 to sm_20 if you have Fermi support (400 series or later)
-NVCC_FLAGS = -c -Xptxas -v -arch sm_13
+NVCC_FLAGS = -c -Xptxas -v -arch sm_10
 CUDAPATH = /usr/local/cuda/lib
 CUDA64PATH = /usr/local/cuda/lib64
 
@@ -91,6 +91,7 @@ JOHN_OBJS = \
 	md4.o \
 	dynamic_fmt.o dynamic_parser.o dynamic_preloads.o dynamic_utils.o \
 	rawSHA224_fmt.o rawSHA256_fmt.o rawSHA384_fmt.o rawSHA512_fmt.o \
+	hmacMD5_fmt.o hmacSHA1_fmt.o \
 	hmacSHA224_fmt.o hmacSHA256_fmt.o hmacSHA384_fmt.o hmacSHA512_fmt.o \
 	XSHA512_fmt.o \
 	hmailserver_fmt.o \
@@ -125,7 +126,8 @@ OCL_OBJS = \
 	common-opencl.o opencl_mysqlsha1_fmt.o \
 	opencl_cryptmd5_fmt.o opencl_phpass_fmt.o opencl_rawsha1_fmt.o \
 	opencl_nt_fmt.o opencl_rawmd5_fmt.o opencl_nsldaps_fmt.o \
-	opencl_cryptsha512_fmt.o opencl_MSCASH2_fmt.o
+	opencl_cryptsha512_fmt.o opencl_MSCASH2_fmt.o opencl_wpapsk_fmt.o \
+	opencl_xsha512_fmt.o
 
 CUDA_OBJS = \
 	cuda_common.o \
@@ -137,7 +139,8 @@ CUDA_OBJS = \
 	cuda_rawsha256_fmt.o cuda_rawsha256.o \
 	cuda_rawsha224_fmt.o cuda_rawsha224.o \
 	cuda_mscash_fmt.o cuda_mscash.o \
-	cuda_xsha512_fmt.o cuda_xsha512.o
+	cuda_xsha512_fmt.o cuda_xsha512.o \
+	cuda_wpapsk_fmt.o cuda_wpapsk.o
 
 BENCH_DES_OBJS_ORIG = \
 	DES_fmt.o DES_std.o
@@ -446,6 +449,7 @@ linux-x86-gpu:
 		CFLAGS="$(CFLAGS) -I$(OCLROOT)/include -DHAVE_CRYPT -DCL_VERSION_1_0 -DHAVE_CUDA -DHAVE_DL -DUSING_ICC_S_FILE" \
 		LDFLAGS="$(LDFLAGS) -L$(OCLROOT)/lib/x86 -L$(OCLROOT)/lib -L$(CUDAPATH) -lcrypt -lOpenCL -ldl -lcudart"
 	$(CP) opencl/*.cl ../run/
+	$(CP) opencl_cryptsha512.h ../run/
 	#/bin/sh ./setup-opencl-stuff.sh
 
 linux-x86-opencl:
@@ -456,6 +460,7 @@ linux-x86-opencl:
 		CFLAGS="$(CFLAGS) -I$(OCLROOT)/include -DHAVE_CRYPT -DCL_VERSION_1_0 -DHAVE_DL -DUSING_ICC_S_FILE" \
 		LDFLAGS="$(LDFLAGS) -L$(OCLROOT)/lib/x86 -L$(OCLROOT)/lib -lcrypt -lOpenCL -ldl"
 	$(CP) opencl/*.cl ../run/
+	$(CP) opencl_cryptsha512.h ../run/
 	#/bin/sh ./setup-opencl-stuff.sh
 
 linux-x86-cuda:
@@ -967,6 +972,10 @@ macosx-x86-64-opencl:
 		LDFLAGS="$(LDFLAGS) -m64 -L$(OCLROOT)/lib/x86_64 -L$(NVIDIA_CUDA)/lib64 -framework OpenCL"
 	$(CP) opencl/*.cl ../run/
 	$(CP) opencl_cryptsha512.h ../run/
+<<<<<<< HEAD
+=======
+	#/bin/sh ./setup-opencl-stuff.sh
+>>>>>>> 1b459639abbc71f40eab59590082d2d6b84135c8
 
 macosx-x86-64:
 	$(LN) x86-64.h arch.h
@@ -1378,6 +1387,13 @@ cuda_xsha512.o: cuda_xsha512.h cuda/xsha512.cu cuda_common.o
 
 cuda_xsha512_fmt.o: cuda_xsha512.o cuda_xsha512_fmt.c cuda_xsha512.h
 	$(CC) $(CFLAGS) cuda_xsha512_fmt.c -o cuda_xsha512_fmt.o
+
+cuda_wpapsk.o:  cuda_common.o
+	cd cuda; nvcc $(NVCC_FLAGS) wpapsk.cu
+	mv cuda/wpapsk.o cuda_wpapsk.o
+
+cuda_wpapsk_fmt.o: cuda_wpapsk.o
+	$(CC)  $(CFLAGS) cuda_wpapsk_fmt.c
 
 ../run/john: $(JOHN_OBJS)
 	$(LD) $(JOHN_OBJS) $(LDFLAGS) -o ../run/john

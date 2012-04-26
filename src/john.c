@@ -117,6 +117,8 @@ extern struct fmt_main fmt_opencl_phpass;
 extern struct fmt_main fmt_opencl_mysqlsha1;
 extern struct fmt_main fmt_opencl_cryptsha512;
 extern struct fmt_main fmt_opencl_mscash2;
+extern struct fmt_main fmt_opencl_wpapsk;
+extern struct fmt_main fmt_opencl_xsha512;
 #endif
 #ifdef HAVE_CUDA
 extern struct fmt_main fmt_cuda_cryptmd5;
@@ -128,6 +130,7 @@ extern struct fmt_main fmt_cuda_mscash2;
 extern struct fmt_main fmt_cuda_rawsha256;
 extern struct fmt_main fmt_cuda_rawsha224;
 extern struct fmt_main fmt_cuda_xsha512;
+extern struct fmt_main fmt_cuda_wpapsk;
 #endif
 
 extern struct fmt_main fmt_ssh;
@@ -136,6 +139,9 @@ extern struct fmt_main rar_fmt;
 extern struct fmt_main zip_fmt;
 
 #include "fmt_externs.h"
+
+extern struct fmt_main fmt_hmacMD5;
+extern struct fmt_main fmt_hmacSHA1;
 
 extern int unique(int argc, char **argv);
 extern int unshadow(int argc, char **argv);
@@ -185,6 +191,9 @@ static void john_register_all(void)
 		john_register_one(&(pFmts[i]));
 
 #include "fmt_registers.h"
+
+	john_register_one(&fmt_hmacMD5);
+	john_register_one(&fmt_hmacSHA1);
 
 #if OPENSSL_VERSION_NUMBER >= 0x00908000
 	john_register_one(&fmt_rawSHA224);
@@ -238,6 +247,8 @@ static void john_register_all(void)
 	john_register_one(&fmt_opencl_mysqlsha1);
 	john_register_one(&fmt_opencl_cryptsha512);
 	john_register_one(&fmt_opencl_mscash2);
+	john_register_one(&fmt_opencl_wpapsk);
+	john_register_one(&fmt_opencl_xsha512);
 #endif
 
 #ifdef HAVE_CUDA
@@ -250,6 +261,8 @@ static void john_register_all(void)
 	john_register_one(&fmt_cuda_rawsha256);
 	john_register_one(&fmt_cuda_rawsha224);
 	john_register_one(&fmt_cuda_xsha512);
+	john_register_one(&fmt_cuda_wpapsk);
+
 #endif
 
 #ifdef HAVE_DL

@@ -470,7 +470,11 @@ static int cmp_exact(char *source, int count){
 
 static void enqueue_obj(cl_command_queue myq){
 	cl_int code;
+<<<<<<< HEAD
 	code = clEnqueueWriteBuffer(myq, data_info, CL_TRUE, 0,
+=======
+	code = clEnqueueWriteBuffer(queue[gpu_id], data_info, CL_TRUE, 0,
+>>>>>>> 1b459639abbc71f40eab59590082d2d6b84135c8
 	    sizeof(unsigned int) * 2, datai, 0, NULL, NULL);
 	HANDLE_CLERROR(code, "failed in clEnqueueWriteBuffer data_info");
 
