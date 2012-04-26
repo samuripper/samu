@@ -32,6 +32,8 @@
  *
  */
 
+/* Note that enabling debugging also enables
+   lots of self tests that skews benchmarks */
 //#define DEBUG
 
 #ifdef CL_VERSION_1_0
@@ -79,7 +81,7 @@
 #endif
 #define BENCHMARK_COMMENT	""
 #define BENCHMARK_LENGTH	-1
-#define PLAINTEXT_LENGTH	16
+#define PLAINTEXT_LENGTH	32
 #define UNICODE_LENGTH		(2 * PLAINTEXT_LENGTH)
 #define BINARY_SIZE		2
 #define SALT_SIZE		sizeof(rarfile)
@@ -137,7 +139,9 @@ static rarfile *cur_file;
 #ifdef CL_VERSION_1_0
 /* Determines when to use CPU instead (eg. Single mode, few keys in a call) */
 #define CPU_GPU_RATIO		32
-static size_t global_work_size = -1;
+/* Size in bytes of Local Memory buffer per thread */
+#define LMEM_PER_THREAD		0 //((UNICODE_LENGTH + 8) * 4)
+static size_t global_work_size = 0;
 static cl_mem cl_saved_key, cl_saved_len, cl_salt, cl_aes_key, cl_aes_iv;
 #endif
 
@@ -152,7 +156,7 @@ static struct fmt_tests cpu_tests[] = {
 	/* -p mode tests, -m3 and -m0 */
 	{"$RAR3$*1*c47c5bef0bbd1e98*965f1453*48*47*1*c5e987f81d316d9dcfdb6a1b27105ce63fca2c594da5aa2f6fdf2f65f50f0d66314f8a09da875ae19d6c15636b65c815*30", "test"},
 	{"$RAR3$*1*b4eee1a48dc95d12*965f1453*64*47*1*0fe529478798c0960dd88a38a05451f9559e15f0cf20b4cac58260b0e5b56699d5871bdcc35bee099cc131eb35b9a116adaedf5ecc26b1c09cadf5185b3092e6*33", "test"},
-#if 0
+#ifdef DEBUG
 	/* Various lengths, these should be in self-test but not benchmark */
 	{"$RAR3$*0*c203c4d80a8a09dc*49bbecccc08b5d893f308bce7ad36c0f", "sator"},
 	{"$RAR3$*0*672fca155cb74ac3*8d534cd5f47a58f6493012cf76d2a68b", "arepo"},
@@ -187,7 +191,7 @@ static struct fmt_tests gpu_tests[] = {
 	/* -p mode tests, -m3 and -m0 */
 	{"$RAR3$*1*575b083d78672e85*965f1453*48*47*1*cd3d8756438f43ab70e668792e28053f0ad7449af1c66863e3e55332bfa304b2c082b9f23b36cd4a8ebc0b743618c5b2*30", "magnum"},
 	{"$RAR3$*1*6f5954680c87535a*965f1453*64*47*1*c9bb398b9a5d54f035fd22be54bc6dc75822f55833f30eb4fb8cc0b8218e41e6d01824e3467475b90b994a5ddb7fe19366d293c9ee305316c2a60c3a7eb3ce5a*33", "magnum"},
-#if 0
+#ifdef DEBUG
 	/* Various lengths, these should be in self-test but not benchmark */
 	{"$RAR3$*0*c203c4d80a8a09dc*49bbecccc08b5d893f308bce7ad36c0f", "sator"},
 	{"$RAR3$*0*672fca155cb74ac3*8d534cd5f47a58f6493012cf76d2a68b", "arepo"},
@@ -282,6 +286,7 @@ static void openssl_cleanup(void)
 #ifdef CL_VERSION_1_0
 static void create_clobj(int kpc)
 {
+	int i;
 #ifdef DEBUG
 	fprintf(stderr, "Creating %d bytes of key buffer\n", UNICODE_LENGTH * kpc);
 #endif
@@ -298,7 +303,8 @@ static void create_clobj(int kpc)
 	HANDLE_CLERROR(ret_code, "Error creating page-locked memory");
 	saved_len = (unsigned int*)clEnqueueMapBuffer(queue[gpu_id], cl_saved_len, CL_TRUE, CL_MAP_READ | CL_MAP_WRITE, 0, sizeof(cl_int) * kpc, 0, NULL, NULL, &ret_code);
 	HANDLE_CLERROR(ret_code, "Error mapping page-locked memory saved_len");
-	memset(saved_len, 0, sizeof(cl_uint) * kpc);
+	for (i = 0; i < kpc; i++)
+		saved_len[i] = 12;
 
 #ifdef DEBUG
 	fprintf(stderr, "Creating 8 bytes of salt buffer\n");
@@ -330,11 +336,13 @@ static void create_clobj(int kpc)
 	HANDLE_CLERROR(clSetKernelArg(crypt_kernel, 2, sizeof(cl_mem), (void*)&cl_salt), "Error setting argument 2");
 	HANDLE_CLERROR(clSetKernelArg(crypt_kernel, 3, sizeof(cl_mem), (void*)&cl_aes_key), "Error setting argument 3");
 	HANDLE_CLERROR(clSetKernelArg(crypt_kernel, 4, sizeof(cl_mem), (void*)&cl_aes_iv), "Error setting argument 4");
-#ifdef DEBUG
-	fprintf(stderr, "Allocating %zu bytes of local memory on GPU, for RawPsw\n", (UNICODE_LENGTH + 8) * 4 * local_work_size);
-#endif
-	HANDLE_CLERROR(clSetKernelArg(crypt_kernel, 5, (UNICODE_LENGTH + 8) * 4 * local_work_size, NULL), "Error setting argument 5");
 
+#if LMEM_PER_THREAD
+#ifdef DEBUG
+	fprintf(stderr, "Allocating %zu bytes of local memory on GPU, for RawPsw\n", LMEM_PER_THREAD * local_work_size);
+#endif
+	HANDLE_CLERROR(clSetKernelArg(crypt_kernel, 5, LMEM_PER_THREAD * local_work_size, NULL), "Error setting argument 5");
+#endif
 	*mkpc = global_work_size = kpc;
 }
 
@@ -370,20 +378,25 @@ static void set_key(char *key, int index)
 }
 
 #ifdef CL_VERSION_1_0
-static void find_best_kpc(void)
+static void find_best_kpc(int do_benchmark)
 {
 	int num;
 	cl_event myEvent;
-	cl_ulong startTime, endTime, tmpTime;
-	unsigned long kernelExecTimeNs = ULONG_MAX;
+	cl_ulong startTime, endTime, run_time, min_time = CL_ULONG_MAX;
+	unsigned int SHAspeed, bestSHAspeed = 0;
 	cl_int ret_code;
-	int optimal_kpc = local_work_size;
+	int optimal_kpc = local_work_size << 2;
 	int i = 0;
-	char teststring[] = "magnum";
 	cl_command_queue queue_prof;
+	char teststring[] = "magnum";
+	const int sha1perkey = (strlen(teststring) * 2 + 8 + 3) * (0x40000 + 16) / 64;
 
-	fprintf(stderr, "Calculating best keys per crypt for LWS %zd, this will take a while ", local_work_size);
-	for (num = local_work_size; num; num <<= 1) {
+	if (do_benchmark) {
+		fprintf(stderr, "Calculating best keys per crypt (GWS) for LWS=%zd\n\n", local_work_size);
+		fprintf(stderr, "Raw GPU speed figures including buffer transfers:\n");
+	}
+
+	for (num = optimal_kpc; num;) {
 		create_clobj(num);
 		queue_prof = clCreateCommandQueue(context[gpu_id], devices[gpu_id], CL_QUEUE_PROFILING_ENABLE, &ret_code);
 		for (i = 0; i < num; i++)
@@ -400,28 +413,50 @@ static void find_best_kpc(void)
 		HANDLE_CLERROR(clFinish(queue_prof), "Failed running kernel");
 		clGetEventProfilingInfo(myEvent, CL_PROFILING_COMMAND_SUBMIT, sizeof(cl_ulong), &startTime, NULL);
 		clGetEventProfilingInfo(myEvent, CL_PROFILING_COMMAND_END, sizeof(cl_ulong), &endTime, NULL);
-		tmpTime = endTime - startTime;
+		run_time = endTime - startTime;
 		HANDLE_CLERROR(clEnqueueReadBuffer(queue_prof, cl_aes_iv, BLOCK_IF_DEBUG, 0, 16 * num, aes_iv, 0, NULL, &myEvent), "Failed reading iv back");
-		HANDLE_CLERROR(clEnqueueReadBuffer(queue_prof, cl_aes_key, CL_TRUE, 0, 16 * num, aes_key, 0, NULL, &myEvent), "Failed reading key back");
+		HANDLE_CLERROR(clEnqueueReadBuffer(queue_prof, cl_aes_key, BLOCK_IF_DEBUG, 0, 16 * num, aes_key, 0, NULL, &myEvent), "Failed reading key back");
+		HANDLE_CLERROR(clFinish(queue_prof), "Failed reading results back");
 		clGetEventProfilingInfo(myEvent, CL_PROFILING_COMMAND_SUBMIT, sizeof(cl_ulong), &startTime, NULL);
 		clGetEventProfilingInfo(myEvent, CL_PROFILING_COMMAND_END, sizeof(cl_ulong), &endTime, NULL);
 		clReleaseCommandQueue(queue_prof);
-		tmpTime = (tmpTime + (endTime - startTime));
 		release_clobj();
+		run_time += endTime - startTime;
+		SHAspeed = sha1perkey * (1000000000UL * num / run_time);
 
-		const int sha1perkey = (strlen(teststring) * 2 + 8 + 3) * (0x40000 + 16) / 64;
-		fprintf(stderr, "\nkpc %4d\t%4lu c/s%14lu sha1/s%8.3f sec per crypt_all()", num, (1000000000UL * num / tmpTime), sha1perkey * (1000000000UL * num / tmpTime), (float)tmpTime / 1000000000.);
+		if (run_time < min_time)
+			min_time = run_time;
 
-		if (tmpTime > 5000000000UL)
+		if (do_benchmark)
+			fprintf(stderr, "kpc %6d\t%4lu c/s%14u sha1/s%8.3f sec per crypt_all()", num, (1000000000UL * num / run_time), SHAspeed, (float)run_time / 1000000000.);
+
+		if (run_time > min_time * (2 + do_benchmark)) {
+			if (do_benchmark) fprintf(stderr, " - too slow\n");
 			break;
+		} else {
+			if (num > (optimal_kpc << (do_benchmark ? 1 : 5)))
+				break;
+		}
 
-		if ((tmpTime / num) < kernelExecTimeNs) {
-			fprintf(stderr, "+");
-			kernelExecTimeNs = (tmpTime / num);
+		if (SHAspeed > (1.01 * bestSHAspeed)) {
+			if (do_benchmark)
+				fprintf(stderr, "+");
+			bestSHAspeed = SHAspeed;
 			optimal_kpc = num;
 		}
+		if (do_benchmark) {
+			fprintf(stderr, "\n");
+			num += local_work_size;
+		} else
+			num *= 2;
 	}
-	fprintf(stderr, "\n");
+
+	if (get_device_type(gpu_id) == CL_DEVICE_TYPE_GPU) {
+		fprintf(stderr, "Optimal keys per crypt %d\n",(int)optimal_kpc);
+		fprintf(stderr, "(to avoid this test on next run, put \""
+		        KPC_CONFIG " = %d\" in john.conf, section [" SECTION_OPTIONS
+		        SUBSECTION_OPENCL "])\n", (int)optimal_kpc);
+	}
 	*mkpc = global_work_size = optimal_kpc;
 }
 #endif	/* OpenCL */
@@ -430,7 +465,7 @@ static void init(struct fmt_main *pFmt)
 {
 #ifdef CL_VERSION_1_0
 	char *temp;
-	cl_ulong maxsize, multiple;
+	cl_ulong maxsize;
 
 	opencl_init("$JOHN/rar_kernel.cl", gpu_id, platform_id);
 
@@ -455,58 +490,45 @@ static void init(struct fmt_main *pFmt)
 	if ((temp = cfg_get_param(SECTION_OPTIONS, SUBSECTION_OPENCL, KPC_CONFIG)))
 		global_work_size = atoi(temp);
 
-	if ((temp = getenv("KPC")))
-		global_work_size = atoi(temp);
-
 	if ((temp = getenv("LWS")))
 		local_work_size = atoi(temp);
+
+	if ((temp = getenv("KPC")))
+		global_work_size = atoi(temp);
 
 	/* Note: we ask for this kernel's max size, not the device's! */
 	HANDLE_CLERROR(clGetKernelWorkGroupInfo(crypt_kernel, devices[gpu_id], CL_KERNEL_WORK_GROUP_SIZE, sizeof(maxsize), &maxsize, NULL), "Query max work group size");
 
-#ifdef CL_KERNEL_PREFERRED_WORK_GROUP_SIZE_MULTIPLE
-	/* This is OpenCL 1.1 */
-	HANDLE_CLERROR(clGetKernelWorkGroupInfo(crypt_kernel, devices[gpu_id], CL_KERNEL_PREFERRED_WORK_GROUP_SIZE_MULTIPLE, sizeof(multiple), &multiple, NULL), "Query preferred work group multiple");
-#else
-	multiple = 8;
-#endif
-
-	while (get_local_memory_size(gpu_id) < ((UNICODE_LENGTH + 8) * 4 * maxsize))
-		maxsize -= multiple;
+	while (get_local_memory_size(gpu_id) < (LMEM_PER_THREAD * maxsize))
+		maxsize -= 32;
 
 #ifdef DEBUG
-	fprintf(stderr, "Max allowed local work size %d, best multiple %d\n", (int)maxsize, (int)multiple);
+	fprintf(stderr, "Max allowed local work size %d\n", (int)maxsize);
 #endif
-	if (local_work_size) {
-		if (local_work_size > maxsize) {
-			fprintf(stderr, "LWS %d is too large for this GPU. Max allowed is %d, using that.\n", (int)local_work_size, (int)maxsize);
-			local_work_size = maxsize;
-		}
-	} else {
+
+	if (!local_work_size) {
 		if (get_device_type(gpu_id) == CL_DEVICE_TYPE_CPU) {
 			local_work_size = get_max_compute_units(gpu_id);
 		} else {
-			local_work_size = maxsize;
+			local_work_size = 64;
 		}
 	}
 
-	if (global_work_size == 0) {
-		find_best_kpc();
-		printf("Optimal keys per crypt %zu\n(to store this, put \""
-		       KPC_CONFIG " = %zu\" in john.conf, section [" SECTION_OPTIONS
-		       SUBSECTION_OPENCL "])\n", global_work_size, global_work_size);
-		exit(0);
+	if (local_work_size > maxsize) {
+		fprintf(stderr, "LWS %d is too large for this GPU. Max allowed is %d, using that.\n", (int)local_work_size, (int)maxsize);
+		local_work_size = maxsize;
 	}
 
-	if (global_work_size == -1)
-		global_work_size = local_work_size * get_max_compute_units(gpu_id) * 8;
+	if (!global_work_size)
+		find_best_kpc(temp == NULL ? 0 : 1);
 
-	if (global_work_size && global_work_size < local_work_size)
+	if (global_work_size < local_work_size)
 		global_work_size = local_work_size;
+
+	fprintf(stderr, "Local worksize (LWS) %d, Global worksize (KPC) %d\n", (int)local_work_size, (int)global_work_size);
 
 	create_clobj(global_work_size);
 
-	fprintf(stderr, "Local work size (LWS) %d, Keys per crypt (KPC) %d\n", (int)local_work_size, (int)global_work_size);
 #ifdef DEBUG
 	{
 		cl_ulong loc_mem_size;

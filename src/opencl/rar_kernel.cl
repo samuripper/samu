@@ -10,25 +10,32 @@
 #pragma OPENCL EXTENSION cl_khr_byte_addressable_store : disable
 #endif
 #ifdef cl_nv_pragma_unroll
+#define NVIDIA
 #pragma OPENCL EXTENSION cl_nv_pragma_unroll : enable
 #endif
 
-#define PLAINTEXT_LENGTH	16	/* must match opencl_rar_fmt.c */
+/* These MUST match opencl_rar_fmt.c */
+#define PLAINTEXT_LENGTH	32
 #define ROUNDS			0x40000
+#define LMEM_PER_THREAD		0 //((UNICODE_LENGTH + 8) * 4)
+
+#define UNICODE_LENGTH		(2 * PLAINTEXT_LENGTH)
 
 /* Macros for reading/writing chars from int32's */
-//#define GETCHAR(buf, index) (((buf)[(index)>>2] & 0xffU << (((index) & 3) << 3)) >> (((index) & 3) << 3))
-#define GETCHAR(buf, index) (((__local uchar*)(buf))[(index)])
 #define PUTCHAR(buf, index, val) (buf)[(index)>>2] = (buf)[(index)>>2] & ~(0xff << (((index) & 3) << 3)) | (((val) & 0xff) << (((index) & 3) << 3))
 #define GETCHAR_BE(buf, index) (((buf)[(index)>>2] & 0xffU << ((3 - ((index) & 3)) << 3)) >> ((3 - ((index) & 3)) << 3))
 #define PUTCHAR_BE(buf, index, val) (buf)[(index)>>2] = (buf)[(index)>>2] & ~(0xff << (((3 - (index) & 3) << 3))) | (((val) & 0xff) << (((3 - (index) & 3) << 3)))
 
-/* This is the fastest I've found for GTX580 */
+#ifdef NVIDIA
 inline uint SWAP32(uint x)
 {
 	x = (x << 16) + (x >> 16);
+	//x = rotate(x, 16U);
 	return ((x & 0x00FF00FF) << 8) + ((x >> 8) & 0x00FF00FF);
 }
+#else
+#define SWAP32(a) (as_uint(as_uchar4(a).wzyx))
+#endif
 
 /* SHA1 constants and IVs */
 #define K0	0x5A827999
@@ -57,17 +64,22 @@ void sha1_block(uint *W, uint *output) {
 	( \
 		temp = W[(t -  3) & 0x0F] ^ W[(t - 8) & 0x0F] ^ \
 		W[(t - 14) & 0x0F] ^ W[ t      & 0x0F], \
-		( W[t & 0x0F] = rotate((int)temp,1) ) \
+		( W[t & 0x0F] = rotate(temp, 1U) ) \
 		)
 
 #undef P
 #define P(a,b,c,d,e,x)	\
 	{ \
-		e += rotate((int)a,5) + F(b,c,d) + K + x; \
-		b = rotate((int)b,30); \
+		e += rotate(a, 5U) + F(b,c,d) + K + x; \
+		b = rotate(b, 30U); \
 	}
 
+#ifdef NVIDIA
 #define F(x,y,z)	(z ^ (x & (y ^ z)))
+#else
+#define F(x,y,z)	bitselect(z, y, x)
+#endif
+
 #define K		0x5A827999
 
 	P( A, B, C, D, E, W[0]  );
@@ -190,7 +202,7 @@ inline void sha1_init(uint *output) {
 	output[4] = H5;
 }
 
-void sha1_final(uint *block, uint *output, uint tot_len)
+inline void sha1_final(uint *block, uint *output, uint tot_len)
 {
 	uint len = (tot_len & 63) >> 2;
 
@@ -231,29 +243,34 @@ __kernel void SetCryptKeys(
 	__global uint *unicode_pw,
 	__global uint *pw_len,
 	__constant uint *salt,
-	__global uint *aes_key, __global uint *aes_iv,
-	__local uint *locmem)
+	__global uint *aes_key, __global uint *aes_iv
+#if LMEM_PER_THREAD
+	, __local uint *locmem
+#endif
+)
 {
 	uint i, j, len, pwlen, b;
 	uint block[2][16];
 	uint output[5];
 	uint gid = get_global_id(0);
-	__local uint *RawPsw = &locmem[get_local_id(0) * 40];
+#if LMEM_PER_THREAD
+	__local uint *RawPsw = &locmem[get_local_id(0) * LMEM_PER_THREAD / 4];
+#else
+	uint RawPsw[UNICODE_LENGTH + 8];
+#endif
 
 	pwlen = pw_len[gid];
 
-	/* Copy to fast memory, one version for every aligment need */
+	/* Copy to fast memory */
 	RawPsw[0] = SWAP32(unicode_pw[gid * PLAINTEXT_LENGTH / 2]);
-	for (i = 1; i < (pwlen + 3) >> 2; i++) {
+	for (i = 1; i < (pwlen + 3) >> 2; i++)
 		RawPsw[i] = SWAP32(unicode_pw[gid * PLAINTEXT_LENGTH / 2 + i]);
-	}
 #pragma unroll 8
-	for (i = 0; i < 8; i++) {
-		//uint temp = GETCHAR(salt, i);
-		uint temp = ((__constant uchar*)salt)[i];
-		PUTCHAR_BE(RawPsw, pwlen + i, temp);
-	}
+	for (i = 0; i < 8; i++)
+		PUTCHAR_BE(RawPsw, pwlen + i, ((__constant uchar*)salt)[i]);
 	pwlen += 8;
+
+	/* And another version for every aligment need */
 	for (i = 0; i < ((pwlen + 3) >> 2) - 1; i++) {
 		RawPsw[i + 10] = (RawPsw[i] << 24) + (RawPsw[i + 1] >> 8);
 		RawPsw[i + 20] = (RawPsw[i] << 16) + (RawPsw[i + 1] >> 16);
@@ -266,39 +283,7 @@ __kernel void SetCryptKeys(
 	b = len = 0;
 	sha1_init(output);
 
-	/* First iteration unrolled here: */
-	block[0][0] = RawPsw[0];
-	block[0][1] = RawPsw[1];
-	block[0][2] = RawPsw[2];
-	for (i = 3; i < (pwlen + 3) >> 2; i++)
-		block[0][i] = RawPsw[i];
-	len += pwlen;
-
-	/* Serial */
-	if (!(len & 3)) {
-		block[0][len >> 2] = 0;
-		len += 3;
-	} else {
-		PUTCHAR_BE(block[0], len, 0); len++;
-		PUTCHAR_BE(block[0], len, 0); len++;
-		PUTCHAR_BE(block[0], len, 0); len++;
-	}
-
-	/* Pick first byte of IV */
-	{
-		uint tempblock[16];
-		uint tempout[5];
-
-		memcpy32(tempblock, block[b], (((len + 3) & 63) >> 2));
-		memcpy32(tempout, output, 5);
-
-		sha1_final(tempblock, tempout, len);
-
-		//PUTCHAR(aes_iv, gid * 16, GETCHAR(tempout, 16));
-		PUTCHAR(aes_iv, gid * 16, ((uchar*)tempout)[16]);
-	}
-
-	for (j = 1; j < ROUNDS; j++)
+	for (j = 0; j < ROUNDS; j++)
 	{
 		switch (len & 3) {
 		case 0:	/* 32-bit aligned! */
@@ -336,18 +321,9 @@ __kernel void SetCryptKeys(
 		len += pwlen;
 
 		/* Serial */
-		if (!(len & 3)) {
-#ifdef __ENDIAN_LITTLE__
-			block[0][(len >> 2) & 31] = SWAP32(j);
-#else
-			block[0][(len >> 2) & 31] = j;
-#endif
-			len += 3;
-		} else {
-			PUTCHAR_BE(block[0], len & 127, j); len++;
-			PUTCHAR_BE(block[0], len & 127, j >> 8); len++;
-			PUTCHAR_BE(block[0], len & 127, j >> 16); len++;
-		}
+		PUTCHAR_BE(block[0], len & 127, j); len++;
+		PUTCHAR_BE(block[0], len & 127, j >> 8); len++;
+		PUTCHAR_BE(block[0], len & 127, j >> 16); len++;
 
 		/* If we have a full buffer, submit it and switch! */
 		if ((len & 64) != (b << 6)) {
@@ -358,16 +334,14 @@ __kernel void SetCryptKeys(
 		/* Every 16K'th round, we do a final and pick one byte of IV */
 		if (j % (ROUNDS >> 4) == 0)
 		{
-			uint tempblock[16];
 			uint tempout[5];
 
-			/* hardcoding 16 here might be faster */
-			memcpy32(tempblock, block[b], (((len + 3) & 63) >> 2));
+			/* hardcoding 16 here is faster than considering less */
+			memcpy32(block[1-b], block[b], 16);
 			memcpy32(tempout, output, 5);
 
-			sha1_final(tempblock, tempout, len);
+			sha1_final(block[1-b], tempout, len);
 
-			//PUTCHAR(aes_iv, gid * 16 + (j >> 14), GETCHAR(tempout, 16));
 			PUTCHAR(aes_iv, gid * 16 + (j >> 14), ((uchar*)tempout)[16]);
 		}
 	}
