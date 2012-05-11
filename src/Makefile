@@ -142,7 +142,7 @@ OCL_OBJS = \
 	common-opencl.o opencl_mysqlsha1_fmt.o \
 	opencl_cryptmd5_fmt.o opencl_phpass_fmt.o opencl_rawsha1_fmt.o \
 	opencl_nt_fmt.o opencl_rawmd5_fmt.o opencl_nsldaps_fmt.o \
-	opencl_cryptsha512_fmt.o opencl_MSCASH2_fmt.o opencl_wpapsk_fmt.o \
+	opencl_cryptsha512_fmt.o opencl_mscash2_fmt.o opencl_wpapsk_fmt.o \
 	opencl_xsha512_fmt.o
 
 CUDA_OBJS = \
@@ -1660,6 +1660,16 @@ test_full_verbose:
 
 test_utf8_verbose:
 	cd ../test && perl jtrts.pl -type utf-8
+
+/etc/bash_completion.d/john.bash_completion:	john.bash_completion
+	@echo
+	@echo NOTE: Administrative priviledges required for this make target.
+	$(CP) john.bash_completion /etc/bash_completion.d/
+	@echo
+	@echo Bash-completion for JtR successfully installed.
+	@echo Source /etc/bash_completion or logout/login to activate the changes
+
+bash-completion:	/etc/bash_completion.d/john.bash_completion
 
 clean:
 	$(RM) $(PROJ) $(PROJ_DOS) $(PROJ_WIN32) $(PROJ_WIN32_MINGW)

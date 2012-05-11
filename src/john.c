@@ -2,7 +2,7 @@
  * This file is part of John the Ripper password cracker,
  * Copyright (c) 1996-2004,2006,2009-2011 by Solar Designer
  *
- * ...with changes in the jumbo patch, by various authors
+ * ...with changes in the jumbo patch, by JimF and magnum (and various others?)
  */
 
 #include <stdio.h>
@@ -58,6 +58,25 @@
 #include "plugin.h"
 #ifdef CL_VERSION_1_0
 #include "common-opencl.h"
+#endif
+#ifdef NO_JOHN_BLD
+#define JOHN_BLD "unk-build-type"
+#else
+#include "john_build_rule.h"
+#endif
+
+#ifdef HAVE_MPI
+#ifdef _OPENMP
+#define _MP_VERSION " MPI + OMP"
+#else
+#define _MP_VERSION " MPI"
+#endif
+#else
+#ifdef _OPENMP
+#define _MP_VERSION " OMP"
+#else
+#define _MP_VERSION ""
+#endif
 #endif
 
 #if CPU_DETECT
@@ -554,6 +573,74 @@ static void john_init(char *name, int argc, char **argv)
 		dynamic_DISPLAY_ALL_FORMATS();
 		// NOTE if we have other 'generics', like sha1, sha2, rc4, ....  then EACH of
 		// them should have a DISPLAY_ALL_FORMATS() function and we can call them here.
+		exit(0);
+	}
+
+	if (options.listconf && !strcasecmp(options.listconf, "?"))
+	{
+		puts("inc-modes, rules, externals, ext-filters, ext-filters-only,");
+		puts("ext-modes, build-info or <conf section name>");
+		exit(0);
+	}
+	if (options.listconf && !strcasecmp(options.listconf, "inc-modes"))
+	{
+		cfg_print_subsections("Incremental", NULL, NULL);
+		exit(0);
+	}
+	if (options.listconf && !strcasecmp(options.listconf, "rules"))
+	{
+		cfg_print_subsections("List.Rules", NULL, NULL);
+		exit(0);
+	}
+	if (options.listconf && !strcasecmp(options.listconf, "externals"))
+	{
+		cfg_print_subsections("List.External", NULL, NULL);
+		exit(0);
+	}
+	if (options.listconf && !strcasecmp(options.listconf, "ext-filters"))
+	{
+		cfg_print_subsections("List.External", "filter", NULL);
+		exit(0);
+	}
+	if (options.listconf && !strcasecmp(options.listconf, "ext-filters-only"))
+	{
+		cfg_print_subsections("List.External", "filter", "generate");
+		exit(0);
+	}
+	if (options.listconf && !strcasecmp(options.listconf, "ext-modes"))
+	{
+		cfg_print_subsections("List.External", "generate", NULL);
+		exit(0);
+	}
+	if (options.listconf && !strcasecmp(options.listconf, "build-info"))
+	{
+		puts("Version: " JOHN_VERSION);
+		puts("Build: " JOHN_BLD _MP_VERSION);
+		printf("Arch: %d-bit %s\n", ARCH_BITS, ARCH_LITTLE_ENDIAN ?
+		     "LE" : "BE");
+#if JOHN_SYSTEMWIDE
+		puts("System-wide exec: " JOHN_SYSTEMWIDE_EXEC);
+		puts("System-wide home: " JOHN_SYSTEMWIDE_HOME);
+		puts("Private home: " JOHN_PRIVATE_HOME);
+#endif
+		printf("$JOHN is %s\n", path_expand("$JOHN/"));
+		puts("Rec file version: " RECOVERY_V);
+		printf("CHARSET_MIN: %d (0x%02x)\n", CHARSET_MIN, CHARSET_MIN);
+		printf("CHARSET_MAX: %d (0x%02x)\n", CHARSET_MAX, CHARSET_MAX);
+		printf("CHARSET_LENGTH: %d\n", CHARSET_LENGTH);
+#ifdef __GNUC__
+		printf("gcc version: %d.%d.%d\n", __GNUC__, __GNUC_MINOR__,
+		       __GNUC_PATCHLEVEL__);
+#endif
+#ifdef __ICC
+		printf("icc version: %d\n", __ICC);
+#endif
+		exit(0);
+	}
+	/* Catch-all for any other john.conf section name :-) */
+	if (options.listconf)
+	{
+		cfg_print_subsections(options.listconf, NULL, NULL);
 		exit(0);
 	}
 
