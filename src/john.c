@@ -127,17 +127,18 @@ extern int mozilla2john(int argc, char **argv);
 #endif
 
 #ifdef CL_VERSION_1_0
+extern struct fmt_main fmt_opencl_NSLDAPS;
 extern struct fmt_main fmt_opencl_rawMD5;
 extern struct fmt_main fmt_opencl_NT;
-extern struct fmt_main fmt_opencl_mysqlsha1;
 extern struct fmt_main fmt_opencl_rawSHA1;
-extern struct fmt_main fmt_opencl_NSLDAPS;
 extern struct fmt_main fmt_opencl_cryptMD5;
-extern struct fmt_main fmt_opencl_xsha512;
-extern struct fmt_main fmt_opencl_wpapsk;
-extern struct fmt_main fmt_opencl_mscash2;
-extern struct fmt_main fmt_opencl_cryptsha512;
 extern struct fmt_main fmt_opencl_phpass;
+extern struct fmt_main fmt_opencl_mysqlsha1;
+extern struct fmt_main fmt_opencl_cryptsha512;
+extern struct fmt_main fmt_opencl_mscash2;
+extern struct fmt_main fmt_opencl_wpapsk;
+extern struct fmt_main fmt_opencl_xsha512;
+extern struct fmt_main fmt_opencl_rawsha512;
 #endif
 #ifdef HAVE_CUDA
 extern struct fmt_main fmt_cuda_cryptmd5;
@@ -150,6 +151,8 @@ extern struct fmt_main fmt_cuda_rawsha256;
 extern struct fmt_main fmt_cuda_rawsha224;
 extern struct fmt_main fmt_cuda_xsha512;
 extern struct fmt_main fmt_cuda_wpapsk;
+extern struct fmt_main fmt_cuda_rawsha512;
+
 #endif
 
 extern struct fmt_main fmt_ssh;
@@ -207,19 +210,6 @@ static void john_register_all(void)
 	john_register_one(&fmt_AFS);
 	john_register_one(&fmt_LM);
 
-#ifdef CL_VERSION_1_0
-	john_register_one(&fmt_opencl_rawMD5);
-	john_register_one(&fmt_opencl_NT);
-	//john_register_one(&fmt_opencl_mysqlsha1);
-	john_register_one(&fmt_opencl_rawSHA1);
-	john_register_one(&fmt_opencl_NSLDAPS);
-	john_register_one(&fmt_opencl_cryptMD5);
-	john_register_one(&fmt_opencl_xsha512);
-	john_register_one(&fmt_opencl_wpapsk);
-	john_register_one(&fmt_opencl_mscash2);
-	john_register_one(&fmt_opencl_cryptsha512);
-	john_register_one(&fmt_opencl_phpass);
-#endif
 	for (i = 0; i < cnt; ++i)
 		john_register_one(&(pFmts[i]));
 
@@ -272,7 +262,20 @@ static void john_register_all(void)
 	john_register_one(&zip_fmt);
 	john_register_one(&fmt_dummy);
 
-
+#ifdef CL_VERSION_1_0
+	john_register_one(&fmt_opencl_NSLDAPS);
+	john_register_one(&fmt_opencl_rawMD5);
+	john_register_one(&fmt_opencl_NT);
+	john_register_one(&fmt_opencl_rawSHA1);
+	john_register_one(&fmt_opencl_cryptMD5);
+	john_register_one(&fmt_opencl_phpass);
+	john_register_one(&fmt_opencl_mysqlsha1);
+	john_register_one(&fmt_opencl_cryptsha512);
+	john_register_one(&fmt_opencl_mscash2);
+	john_register_one(&fmt_opencl_wpapsk);
+	john_register_one(&fmt_opencl_xsha512);
+	john_register_one(&fmt_opencl_rawsha512);
+#endif
 
 #ifdef HAVE_CUDA
 	john_register_one(&fmt_cuda_cryptmd5);
@@ -285,6 +288,7 @@ static void john_register_all(void)
 	john_register_one(&fmt_cuda_rawsha224);
 	john_register_one(&fmt_cuda_xsha512);
 	john_register_one(&fmt_cuda_wpapsk);
+	john_register_one(&fmt_cuda_rawsha512);
 
 #endif
 
