@@ -45,18 +45,18 @@ struct db_password {
  * Buffered keys hash table entry.
  */
 struct db_keys_hash_entry {
-/* Index of next key with the same hash, or -1 if none */
+/* Index of next key with the same hash */
 	short next;
 
 /* Byte offset of this key in the buffer */
-	unsigned short offset;
+	short offset;
 };
 
 /*
  * Buffered keys hash.
  */
 struct db_keys_hash {
-/* The hash table, maps to indices for the list below; -1 means empty bucket */
+/* The hash table, maps to indices for the list below */
 	short hash[SINGLE_HASH_SIZE];
 
 /* List of keys with the same hash, allocated as min_keys_per_crypt entries */
@@ -101,14 +101,9 @@ struct db_salt {
 /* Salt in internal representation */
 	void *salt;
 
-/* Bitmap indicating whether a computed hash is potentially present in the list
- * and hash table below.  Normally, the bitmap is large enough that most of its
- * bits are zero. */
-	unsigned int *bitmap;
-
-/* Pointer to a hash function to get the bit index into the bitmap above for
- * the crypt_all() method output with given index.  The function always returns
- * zero if there's no bitmap for this salt. */
+/* Pointer to a hash function to get the index of password list to be
+ * compared against the crypt_all() method output with given index. The
+ * function always returns zero if there's no hash table for this salt. */
 	int (*index)(int index);
 
 /* List of passwords with this salt */

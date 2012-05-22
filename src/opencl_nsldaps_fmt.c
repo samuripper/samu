@@ -451,13 +451,6 @@ static int cmp_exact(char *source, int count){
 static void crypt_all(int count)
 {
 	cl_int code;
-	code = clEnqueueWriteBuffer(queue[gpu_id], data_info, CL_TRUE, 0,
-	    sizeof(unsigned int) * 2, datai, 0, NULL, NULL);
-	HANDLE_CLERROR(code, "failed in clEnqueueWriteBuffer data_info");
-
-	code = clEnqueueWriteBuffer(queue[gpu_id], mysalt, CL_TRUE, 0, SALT_SIZE,
-	    saved_salt, 0, NULL, NULL);
-	HANDLE_CLERROR(code, "failed in clEnqueueWriteBuffer mysalt");
 
 	code = clEnqueueWriteBuffer(queue[gpu_id], buffer_keys, CL_TRUE, 0,
 	    (PLAINTEXT_LENGTH) * max_keys_per_crypt, saved_plain, 0, NULL, NULL);
