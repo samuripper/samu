@@ -3,8 +3,10 @@
 
 #ifdef __APPLE__
 #include <OpenCL/opencl.h>
+/* Should there be an alternative cl_ext.h here? */
 #else
 #include <CL/cl.h>
+#include <CL/cl_ext.h>
 #endif
 
 #include "arch.h"
@@ -34,6 +36,9 @@ cl_kernel crypt_kernel;
 size_t local_work_size;
 size_t max_group_size;
 
+int device_info[MAXGPUS];
+int cores_per_MP[MAXGPUS];
+
 cl_int oclGetDevCap(cl_device_id device, cl_int *iComputeCapMajor, cl_int *iComputeCapMinor);
 
 void opencl_init_dev(unsigned int dev_id, unsigned int platform_id);
@@ -41,7 +46,6 @@ void opencl_init(char *kernel_filename, unsigned int dev_id,
                  unsigned int platform_id);
 void opencl_build_kernel(char *kernel_filename, unsigned int dev_id);
 
-int get_device_info();
 cl_device_type get_device_type(int dev_id);
 cl_ulong get_local_memory_size(int dev_id);
 size_t get_max_work_group_size(int dev_id);

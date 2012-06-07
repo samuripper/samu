@@ -88,7 +88,14 @@ static char *decode(char *ciphertext)
 	return out;
 }
 
-static MAYBE_INLINE ARCH_WORD_32 string_hash(char *s)
+#ifdef __GNUC__
+#if __GNUC__ > 3 || (__GNUC__ == 3 && __GNUC_MINOR__ >= 1)
+__attribute__((always_inline))
+#else
+__inline__
+#endif
+#endif
+static ARCH_WORD_32 string_hash(char *s)
 {
 	ARCH_WORD_32 hash, extra;
 	char *p;
@@ -165,16 +172,6 @@ static int binary_hash_4(void *binary)
 	return ((dummy_binary *)binary)->hash & 0xfffff;
 }
 
-static int binary_hash_5(void *binary)
-{
-	return ((dummy_binary *)binary)->hash & 0xffffff;
-}
-
-static int binary_hash_6(void *binary)
-{
-	return ((dummy_binary *)binary)->hash & 0x7ffffff;
-}
-
 static int get_hash_0(int index)
 {
 	ARCH_WORD_32 hash = string_hash(saved_key[index]);
@@ -202,16 +199,6 @@ static int get_hash_3(int index)
 static int get_hash_4(int index)
 {
 	return string_hash(saved_key[index]) & 0xfffff;
-}
-
-static int get_hash_5(int index)
-{
-	return string_hash(saved_key[index]) & 0xffffff;
-}
-
-static int get_hash_6(int index)
-{
-	return string_hash(saved_key[index]) & 0x7ffffff;
 }
 
 static void set_key(char *key, int index)
@@ -282,9 +269,7 @@ struct fmt_main fmt_dummy = {
 			binary_hash_1,
 			binary_hash_2,
 			binary_hash_3,
-			binary_hash_4,
-			binary_hash_5,
-			binary_hash_6
+			binary_hash_4
 		},
 		fmt_default_salt_hash,
 		fmt_default_set_salt,
@@ -297,12 +282,11 @@ struct fmt_main fmt_dummy = {
 			get_hash_1,
 			get_hash_2,
 			get_hash_3,
-			get_hash_4,
-			get_hash_5,
-			get_hash_6
+			get_hash_4
 		},
 		cmp_all,
 		cmp_one,
-		cmp_exact
+		cmp_exact,
+		fmt_default_get_source
 	}
 };

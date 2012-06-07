@@ -6,7 +6,6 @@
  */
 
 #include <string.h>
-#include <assert.h>
 
 #include "arch.h"
 #include "misc.h"
@@ -37,6 +36,16 @@ static void (*crk_fix_state)(void);
 static struct db_keys *crk_guesses;
 static int64 *crk_timestamps;
 static char crk_stdout_key[PLAINTEXT_BUFFER_SIZE];
+
+static char *get_source(struct db_password *current_pw)
+{
+	static char SourceBuf[LINE_BUFFER_SIZE];
+	char *cp;
+	if (current_pw->source) return current_pw->source;
+	cp = crk_db->format->methods.get_source(current_pw->binary, NULL, SourceBuf);
+	current_pw->source = str_alloc_copy(cp);
+	return current_pw->source;
+}
 
 static void crk_dummy_set_salt(void *salt)
 {
@@ -115,7 +124,7 @@ static void crk_remove_salt(struct db_salt *salt)
 void crk_remove_hash(struct db_salt *salt, struct db_password *pw)
 {
 	struct db_password **current;
-	int hash, count;
+	int hash;
 
 	crk_db->password_count--;
 
@@ -126,10 +135,10 @@ void crk_remove_hash(struct db_salt *salt, struct db_password *pw)
 	}
 
 /*
- * If there's no bitmap for this salt, assume that next_hash fields are unused
- * and don't need to be updated.  Only bother with the list.
+ * If there's no hash table for this salt, assume that next_hash fields are
+ * unused and don't need to be updated.  Only bother with the list.
  */
-	if (!salt->bitmap) {
+	if (salt->hash_size < 0) {
 		current = &salt->list;
 		while (*current != pw)
 			current = &(*current)->next;
@@ -139,28 +148,10 @@ void crk_remove_hash(struct db_salt *salt, struct db_password *pw)
 	}
 
 	hash = crk_db->format->methods.binary_hash[salt->hash_size](pw->binary);
-	count = 0;
-	current = &salt->hash[hash >> PASSWORD_HASH_SHR];
-	do {
-		if (crk_db->format->methods.binary_hash[salt->hash_size]
-		    ((*current)->binary) == hash)
-			count++;
-		if (*current == pw)
-			*current = pw->next_hash;
-		else
-			current = &(*current)->next_hash;
-	} while (*current);
-
-	assert(count >= 1);
-
-/*
- * If we have removed the last entry with the exact hash value from this hash
- * bucket (which could also contain entries with nearby hash values in case
- * PASSWORD_HASH_SHR is non-zero), we must also reset the corresponding bit.
- */
-	if (count == 1)
-		salt->bitmap[hash / (sizeof(*salt->bitmap) * 8)] &=
-		    ~(1U << (hash % (sizeof(*salt->bitmap) * 8)));
+	current = &salt->hash[hash];
+	while (*current != pw)
+		current = &(*current)->next_hash;
+	*current = pw->next_hash;
 
 /*
  * If there's a hash table for this salt, assume that the list is only used by
@@ -235,7 +226,7 @@ static int crk_process_guess(struct db_salt *salt, struct db_password *pw,
 		}
 	}
 	log_guess(crk_db->options->flags & DB_LOGIN ? replogin : "?",
-		dupe ? NULL : pw->source, repkey, key, crk_db->options->field_sep_char);
+		dupe ? NULL : get_source(pw), repkey, key, crk_db->options->field_sep_char);
 
 	if (options.flags & FLG_CRKSTAT)
 		event_pending = event_status = 1;
@@ -304,13 +295,13 @@ static int crk_password_loop(struct db_salt *salt)
 		status_update_crypts(&effective_count);
 	}
 
-	if (!salt->bitmap) {
+	if (salt->hash_size < 0) {
 		pw = salt->list;
 		do {
 			if (crk_methods.cmp_all(pw->binary, crk_key_index))
 			for (index = 0; index < crk_key_index; index++)
 			if (crk_methods.cmp_one(pw->binary, index))
-			if (crk_methods.cmp_exact(pw->source, index)) {
+			if (!pw->source || crk_methods.cmp_exact(pw->source, index)) {
 				if (crk_process_guess(salt, pw, index))
 					return 1;
 				else {
@@ -321,17 +312,13 @@ static int crk_password_loop(struct db_salt *salt)
 		} while ((pw = pw->next));
 	} else
 	for (index = 0; index < crk_key_index; index++) {
-		int hash = salt->index(index);
-		if (salt->bitmap[hash / (sizeof(*salt->bitmap) * 8)] &
-		    (1U << (hash % (sizeof(*salt->bitmap) * 8)))) {
-			pw = salt->hash[hash >> PASSWORD_HASH_SHR];
-			do {
-				if (crk_methods.cmp_one(pw->binary, index))
-				if (crk_methods.cmp_exact(pw->source, index))
-				if (crk_process_guess(salt, pw, index))
-					return 1;
-			} while ((pw = pw->next_hash));
-		}
+		if ((pw = salt->hash[salt->index(index)]))
+		do {
+			if (crk_methods.cmp_one(pw->binary, index))
+			if (!pw->source || crk_methods.cmp_exact(pw->source, index))
+			if (crk_process_guess(salt, pw, index))
+				return 1;
+		} while ((pw = pw->next_hash));
 	}
 
 	return 0;

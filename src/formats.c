@@ -9,7 +9,6 @@
 #include <string.h>
 
 #include "params.h"
-#include "memory.h"
 #include "formats.h"
 #ifndef BENCH_BUILD
 #include "options.h"
@@ -46,27 +45,33 @@ void fmt_init(struct fmt_main *format)
 #endif
 }
 
-/*
- * Test pointers returned by binary() and salt() for possible misalignment.
- */
-static int is_misaligned(void *p, int size)
-{
-	unsigned long mask = 0;
-	if (size >= ARCH_SIZE)
-		mask = ARCH_SIZE - 1;
-	else if (size >= 4)
-		mask = 3;
-	return (unsigned long)p & mask;
-}
-
-static char *fmt_self_test_body(struct fmt_main *format,
-    void *binary_copy, void *salt_copy)
+char *fmt_self_test(struct fmt_main *format)
 {
 	static char s_size[32];
 	struct fmt_tests *current;
-	char *ciphertext = NULL, *plaintext;
+	char *ciphertext, *plaintext;
 	int ntests, done, index, max, size;
 	void *binary, *salt;
+
+	// validate that there are no NULL function pointers
+	if (format->methods.init == NULL)       return "method init NULL";
+	if (format->methods.prepare == NULL)    return "method prepare NULL";
+	if (format->methods.valid == NULL)      return "method valid NULL";
+	if (format->methods.split == NULL)      return "method split NULL";
+	if (format->methods.binary == NULL)     return "method binary NULL";
+	if (format->methods.salt == NULL)       return "method salt NULL";
+	if (!format->methods.binary_hash[0])    return "method binary_hash[0] NULL";
+	if (format->methods.salt_hash == NULL)  return "method salt_hash NULL";
+	if (format->methods.set_salt == NULL)   return "method set_salt NULL";
+	if (format->methods.set_key == NULL)    return "method set_key NULL";
+	if (format->methods.get_key == NULL)    return "method get_key NULL";
+	if (format->methods.clear_keys == NULL) return "method clear_keys NULL";
+	if (format->methods.crypt_all == NULL)  return "method crypt_all NULL";
+	if (format->methods.get_hash[0]==NULL)  return "method get_hash[0] NULL";
+	if (format->methods.cmp_all == NULL)    return "method cmp_all NULL";
+	if (format->methods.cmp_one == NULL)    return "method cmp_one NULL";
+	if (format->methods.cmp_exact == NULL)  return "method cmp_exact NULL";
+	if (format->methods.get_source == NULL) return "method get_source NULL";
 
 	if (format->params.plaintext_length > PLAINTEXT_BUFFER_SIZE - 3)
 		return "length";
@@ -92,38 +97,11 @@ static char *fmt_self_test_body(struct fmt_main *format,
 			return "prepare";
 		if (format->methods.valid(prepared,format) != 1)
 			return "valid";
-		/* Ensure we have a misaligned ciphertext */
-		if (!ciphertext)
-			ciphertext = (char*)mem_alloc_tiny(LINE_BUFFER_SIZE + 1,
-			                            MEM_ALIGN_WORD) + 1;
-		strcpy(ciphertext, format->methods.split(prepared, 0));
+		ciphertext = format->methods.split(prepared, 0);
 		plaintext = current->plaintext;
 
-/*
- * Make sure the declared binary_size and salt_size are sufficient to actually
- * hold the binary ciphertexts and salts.  We do this by copying the values
- * returned by binary() and salt() only to the declared sizes.
- */
 		binary = format->methods.binary(ciphertext);
-		if (!binary)
-			return "binary (NULL)";
-		if (format->methods.binary != fmt_default_binary &&
-		    format->methods.binary_hash[0] != fmt_default_binary_hash &&
-		    is_misaligned(binary, format->params.binary_size))
-			return "binary (alignment)";
-
-		memcpy(binary_copy, binary, format->params.binary_size);
-		binary = binary_copy;
-
 		salt = format->methods.salt(ciphertext);
-		if (!salt)
-			return "salt (NULL)";
-		if (format->methods.salt != fmt_default_salt &&
-		    format->methods.salt_hash != fmt_default_salt_hash &&
-		    is_misaligned(salt, format->params.salt_size))
-			return "salt (alignment)";
-		memcpy(salt_copy, salt, format->params.salt_size);
-		salt = salt_copy;
 
 		if ((unsigned int)format->methods.salt_hash(salt) >=
 		    SALT_HASH_SIZE)
@@ -190,49 +168,6 @@ static char *fmt_self_test_body(struct fmt_main *format,
 	return NULL;
 }
 
-/*
- * Allocate memory for a copy of a binary ciphertext or salt with only the
- * minimum guaranteed alignment.  We do this to test that binary_hash*(),
- * cmp_*(), and salt_hash() do accept such pointers.
- */
-static void *alloc_binary(size_t size, void **alloc)
-{
-	*alloc = mem_alloc(size + 8 + 4);
-
-	if (size >= ARCH_SIZE)
-		return *alloc;
-	if (size >= 4)
-		return (char*)*alloc + 4;
-	return (char*)*alloc + 1;
-}
-
-char *fmt_self_test(struct fmt_main *format)
-{
-	char *retval;
-	void *binary_alloc, *salt_alloc;
-	void *binary_copy, *salt_copy;
-
-	binary_copy = alloc_binary(format->params.binary_size, &binary_alloc);
-	memset((char*)binary_copy + format->params.binary_size, 0xaa, 8);
-
-	salt_copy = alloc_binary(format->params.salt_size, &salt_alloc);
-	memset((char*)salt_copy + format->params.salt_size, 0x33, 8);
-
-	retval = fmt_self_test_body(format, binary_copy, salt_copy);
-	if (!retval) {
-		if (memcmp((char*)binary_copy + format->params.binary_size, "\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa", 8)) {
-			return "Binary buffer overrun";
-		}
-		if (memcmp((char*)salt_copy + format->params.salt_size, "\x33\x33\x33\x33\x33\x33\x33\x33", 8)) {
-			return "Salt buffer overrun";
-		}
-	}
-	MEM_FREE(salt_alloc);
-	MEM_FREE(binary_alloc);
-
-	return retval;
-}
-
 void fmt_default_init(struct fmt_main *pFmt)
 {
 }
@@ -283,4 +218,10 @@ void fmt_default_clear_keys(void)
 int fmt_default_get_hash(int index)
 {
 	return 0;
+}
+
+char *fmt_default_get_source(void *binary_hash, void *salt, char ReturnBuf[LINE_BUFFER_SIZE]) 
+{
+	*ReturnBuf = 0;
+	return ReturnBuf;
 }
