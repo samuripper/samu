@@ -86,9 +86,10 @@ static BF_salt saved_salt;
 
 static void init(struct fmt_main *pFmt)
 {	// BF_select_device(platform,device);
-        BF_select_device(0,0);
+        BF_select_device(platform_id,gpu_id);
 	keys_mode = 'a';
 	sign_extension_bug = 0;
+	printf("*****See 'opencl_bf_std.h' for device specific optimizations******\n");
 }
 
 static int valid(char *ciphertext,struct fmt_main *pFmt)
@@ -290,7 +291,6 @@ struct fmt_main fmt_opencl_bf = {
 		},
 		cmp_all,
 		cmp_one,
-		cmp_exact,
-		fmt_default_get_source
+		cmp_exact
 	}
 };

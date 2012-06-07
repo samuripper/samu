@@ -110,7 +110,8 @@ static void crypt_all(int count)
 
 static void *binary(char *ciphertext)
 {
-	static unsigned char realcipher[BINARY_SIZE];
+	static ARCH_WORD_32 outb[BINARY_SIZE / 4];
+	unsigned char *realcipher = (unsigned char*)outb;
 	int i;
 
 	ciphertext += TAG_LENGTH;
@@ -138,7 +139,7 @@ static int get_hash_4(int index) { return ((unsigned int *)crypt_key)[0] & 0xfff
 static int get_hash_5(int index) { return ((unsigned int *)crypt_key)[0] & 0xffffff; }
 static int get_hash_6(int index) { return ((unsigned int *)crypt_key)[0] & 0x7ffffff; }
 
-struct fmt_main fmt_rawSHA = {
+struct fmt_main fmt_rawSHA0 = {
 	{
 		FORMAT_LABEL,
 		FORMAT_NAME,
@@ -185,7 +186,6 @@ struct fmt_main fmt_rawSHA = {
 		},
 		cmp_all,
 		cmp_one,
-		cmp_exact,
-		fmt_default_get_source
+		cmp_exact
 	}
 };
