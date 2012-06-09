@@ -11,10 +11,10 @@
 #include <string.h>
 
 #ifdef BSD
-// OSX 
-#include <architecture/byte_order.h>
+	 // OSX 
+	 #include <architecture/byte_order.h>
 #else
-#include <endian.h>
+	 #include <endian.h>
 #endif
 
 
@@ -29,9 +29,8 @@
 #include "base64.h"
 #include "common-opencl.h"
 
-#define ALGORITHM_NAME			"OpenCL"
 #define FORMAT_LABEL			"ssha-opencl"
-#define FORMAT_NAME			"Netscape LDAPS"
+#define FORMAT_NAME			"Netscape LDAP SSHA OPENCL"
 #define SHA_TYPE                        "salted SHA-1"
 
 #define BENCHMARK_COMMENT		""
@@ -50,7 +49,7 @@
 #define MAX_KEYS_PER_CRYPT		SSHA_NUM_KEYS
 
 #define LWS_CONFIG			"ssha_LWS"
-#define KPC_CONFIG			"ssha_KPC"
+#define GWS_CONFIG			"ssha_GWS"
 
 #ifndef uint32_t
 #define uint32_t unsigned int
@@ -314,7 +313,7 @@ static void find_best_kpc(void){
 	clReleaseCommandQueue(queue_prof);
     }
     printf("Optimal keys per crypt %d\n(to avoid this test on next run, put \""
-           KPC_CONFIG " = %d\" in john.conf, section [" SECTION_OPTIONS
+           GWS_CONFIG " = %d\" in john.conf, section [" SECTION_OPTIONS
            SUBSECTION_OPENCL "])\n", optimal_kpc, optimal_kpc);
     max_keys_per_crypt = optimal_kpc;
     release_clobj();
@@ -330,7 +329,8 @@ static void fmt_ssha_init(struct fmt_main *pFmt)
 	crypt_kernel = clCreateKernel(program[gpu_id], "sha1_crypt_kernel", &ret_code);
 	HANDLE_CLERROR(ret_code, "Error creating kernel. Double-check kernel name?");
 
-	if ((temp = cfg_get_param(SECTION_OPTIONS, SUBSECTION_OPENCL, LWS_CONFIG)))
+	if ((temp = cfg_get_param(SECTION_OPTIONS, SUBSECTION_OPENCL,
+	                          LWS_CONFIG)))
 		local_work_size = atoi(temp);
 
 	if ((temp = getenv("LWS")))
@@ -342,12 +342,13 @@ static void fmt_ssha_init(struct fmt_main *pFmt)
 		release_clobj();
 	}
 
-	if ((temp = cfg_get_param(SECTION_OPTIONS, SUBSECTION_OPENCL, KPC_CONFIG)))
+	if ((temp = cfg_get_param(SECTION_OPTIONS, SUBSECTION_OPENCL,
+	                          GWS_CONFIG)))
 		max_keys_per_crypt = atoi(temp);
 	else
 		max_keys_per_crypt = SSHA_NUM_KEYS;
 
-	if ((temp = getenv("KPC")))
+	if ((temp = getenv("GWS")))
 		max_keys_per_crypt = atoi(temp);
 
 	if (max_keys_per_crypt) {
@@ -358,7 +359,7 @@ static void fmt_ssha_init(struct fmt_main *pFmt)
 		create_clobj(SSHA_NUM_KEYS);
 		find_best_kpc();
 	}
-	printf("Local work size (LWS) %d, Keys per crypt (KPC) %d\n",(int)local_work_size,max_keys_per_crypt);
+	printf("Local work size (LWS) %d, Global work size (GWS) %d\n",(int)local_work_size, max_keys_per_crypt);
 	pFmt->params.max_keys_per_crypt = max_keys_per_crypt;
 }
 

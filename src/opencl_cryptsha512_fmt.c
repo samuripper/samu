@@ -27,11 +27,11 @@
 #define BENCHMARK_LENGTH		-1
 
 #define LWS_CONFIG			"cryptsha512_LWS"
-#define KPC_CONFIG			"cryptsha512_KPC"
+#define GWS_CONFIG			"cryptsha512_GWS"
 
-static sha512_salt                salt;
-static sha512_password            *plaintext;        // plaintext ciphertexts
-static sha512_hash                *calculated_hash;  // calculated hashes
+static sha512_salt         salt;
+static sha512_password     *plaintext;        // plaintext ciphertexts
+static sha512_hash         *calculated_hash;  // calculated hashes
 
 cl_mem salt_buffer;        //Salt information.
 cl_mem pass_buffer;        //Plaintext buffer.
@@ -41,7 +41,8 @@ cl_mem pinned_saved_keys, pinned_partial_hashes;
 cl_command_queue queue_prof;
 cl_kernel crypt_kernel;
 
-static size_t max_keys_per_crypt; //TODO: move to common-opencl? local_work_size is there.
+//TODO: move to common-opencl? local_work_size is there.
+static size_t global_work_size;
 static int new_keys;
 
 static struct fmt_tests tests[] = {
@@ -62,13 +63,15 @@ unsigned int get_task_max_work_group_size(){
         max_available = (get_local_memory_size(gpu_id) -
                 sizeof(sha512_salt)) /
                 sizeof(working_memory);
-    else
+    else if (gpu_nvidia(device_info[gpu_id]))
         max_available = (get_local_memory_size(gpu_id) -
                 sizeof(sha512_salt)) /
                 sizeof(sha512_password);
-
-   if (max_available > get_current_work_group_size(gpu_id, crypt_kernel))
-       return get_current_work_group_size(gpu_id, crypt_kernel);
+    else
+        max_available = get_max_work_group_size(gpu_id);
+                
+    if (max_available > get_current_work_group_size(gpu_id, crypt_kernel))
+        return get_current_work_group_size(gpu_id, crypt_kernel);
 
     return max_available;
 }
@@ -93,25 +96,25 @@ size_t get_default_workgroup(){
 }
 
 /* ------- Create and destroy necessary objects ------- */
-static void create_clobj(int kpc) {
+static void create_clobj(int gws) {
     pinned_saved_keys = clCreateBuffer(context[gpu_id],
             CL_MEM_READ_WRITE | CL_MEM_ALLOC_HOST_PTR,
-            sizeof(sha512_password) * kpc, NULL, &ret_code);
+            sizeof(sha512_password) * gws, NULL, &ret_code);
     HANDLE_CLERROR(ret_code, "Error creating page-locked memory pinned_saved_keys");
 
     plaintext = (sha512_password *) clEnqueueMapBuffer(queue[gpu_id],
             pinned_saved_keys, CL_TRUE, CL_MAP_WRITE | CL_MAP_READ, 0,
-            sizeof(sha512_password) * kpc, 0, NULL, NULL, &ret_code);
+            sizeof(sha512_password) * gws, 0, NULL, NULL, &ret_code);
     HANDLE_CLERROR(ret_code, "Error mapping page-locked memory saved_plain");
 
     pinned_partial_hashes = clCreateBuffer(context[gpu_id],
             CL_MEM_READ_WRITE | CL_MEM_ALLOC_HOST_PTR,
-            sizeof(sha512_hash) * kpc, NULL, &ret_code);
+            sizeof(sha512_hash) * gws, NULL, &ret_code);
     HANDLE_CLERROR(ret_code, "Error creating page-locked memory pinned_partial_hashes");
 
     calculated_hash = (sha512_hash *) clEnqueueMapBuffer(queue[gpu_id],
             pinned_partial_hashes, CL_TRUE, CL_MAP_READ, 0,
-            sizeof(sha512_hash) * kpc, 0, NULL, NULL, &ret_code);
+            sizeof(sha512_hash) * gws, 0, NULL, NULL, &ret_code);
     HANDLE_CLERROR(ret_code, "Error mapping page-locked memory out_hashes");
 
     // create arguments (buffers)
@@ -120,11 +123,11 @@ static void create_clobj(int kpc) {
     HANDLE_CLERROR(ret_code, "Error creating data_info out argument");
 
     pass_buffer = clCreateBuffer(context[gpu_id], CL_MEM_READ_ONLY,
-            sizeof(sha512_password) * kpc, NULL, &ret_code);
+            sizeof(sha512_password) * gws, NULL, &ret_code);
     HANDLE_CLERROR(ret_code, "Error creating buffer argument buffer_keys");
 
     hash_buffer = clCreateBuffer(context[gpu_id], CL_MEM_WRITE_ONLY,
-            sizeof(sha512_hash) * kpc, NULL, &ret_code);
+            sizeof(sha512_hash) * gws, NULL, &ret_code);
     HANDLE_CLERROR(ret_code, "Error creating buffer argument buffer_out");
 
     //Set kernel arguments
@@ -142,10 +145,18 @@ static void create_clobj(int kpc) {
         HANDLE_CLERROR(clSetKernelArg(crypt_kernel, 4,   //Fast working memory.
            sizeof (working_memory) * local_work_size,
            NULL), "Error setting argument 4");
+
+    } else if (gpu_nvidia(device_info[gpu_id])) {
+        HANDLE_CLERROR(clSetKernelArg(crypt_kernel, 3,   //Fast working memory.
+           sizeof (sha512_salt),
+           NULL), "Error setting argument 3");
+        HANDLE_CLERROR(clSetKernelArg(crypt_kernel, 4,   //Fast working memory.
+           sizeof (sha512_password) * local_work_size,
+           NULL), "Error setting argument 4");                
     }
-    memset(plaintext, '\0', sizeof(sha512_password) * kpc);
+    memset(plaintext, '\0', sizeof(sha512_password) * gws);
     memset(&salt, '\0', sizeof(sha512_salt));
-    max_keys_per_crypt = kpc;
+    global_work_size = gws;
 }
 
 static void release_clobj(void) {
@@ -213,7 +224,7 @@ static void set_salt(void *salt_info) {
         offset = endp - currentsalt;
     }
     memcpy(salt.salt, currentsalt + offset, SALT_LENGTH);
-    salt.length = strlen((char *) salt.salt);
+    salt.length = strlen(currentsalt + offset);
     salt.length = (salt.length > SALT_LENGTH ? SALT_LENGTH : salt.length);
 }
 
@@ -266,14 +277,14 @@ static void find_best_workgroup(void) {
     set_salt("$6$saltstring$");
 
     // Set keys
-    for (i = 0; i < max_keys_per_crypt; i++) {
+    for (i = 0; i < global_work_size; i++) {
         set_key("aaabaabaaa", i);
     }
     HANDLE_CLERROR(clEnqueueWriteBuffer(queue_prof, salt_buffer, CL_TRUE, 0,
             sizeof (sha512_salt), &salt, 0, NULL, NULL),
             "Failed in clEnqueueWriteBuffer I");
     HANDLE_CLERROR(clEnqueueWriteBuffer(queue_prof, pass_buffer, CL_TRUE, 0,
-            sizeof (sha512_password) * max_keys_per_crypt,
+            sizeof (sha512_password) * global_work_size,
             plaintext, 0, NULL, NULL),
             "Failed in clEnqueueWriteBuffer II");
 
@@ -284,7 +295,7 @@ static void find_best_workgroup(void) {
          my_work_group *= 2) {
         advance_cursor();
         ret_code = clEnqueueNDRangeKernel(queue_prof, crypt_kernel,
-                1, NULL, &max_keys_per_crypt, &my_work_group, 0, NULL, &myEvent);
+                1, NULL, &global_work_size, &my_work_group, 0, NULL, &myEvent);
         HANDLE_CLERROR(clFinish(queue_prof), "Failed in clFinish");
 
         if (ret_code != CL_SUCCESS) {
@@ -336,18 +347,18 @@ static int get_step(size_t num, int step, int startup){
   This function could be used to calculated the best num
   of keys per crypt for the given format
 -- */
-static void find_best_kpc(void) {
+static void find_best_gws(void) {
     size_t num;
     cl_event myEvent;
     cl_ulong startTime, endTime, run_time, min_time = CL_ULONG_MAX;
     cl_int ret_code;
     cl_uint *tmpbuffer;
-    int optimal_kpc = MIN_KEYS_PER_CRYPT, i, step = STEP;
+    int optimal_gws = MIN_KEYS_PER_CRYPT, i, step = STEP;
     int do_benchmark = 0;
     unsigned int SHAspeed, bestSHAspeed = 0;
     char *tmp_value;
 
-    printf("Calculating best keys per crypt, this will take a while ");
+    printf("Calculating best global work size, this will take a while ");
 
     if ((tmp_value = getenv("STEP"))){
         step = atoi(tmp_value);
@@ -365,7 +376,7 @@ static void find_best_kpc(void) {
         tmpbuffer = malloc(sizeof (sha512_hash) * num);
 
         if (tmpbuffer == NULL) {
-            printf ("Malloc failure in find_best_kpc\n");
+            printf ("Malloc failure in find_best_gws\n");
             exit (EXIT_FAILURE);
         }
 
@@ -416,7 +427,7 @@ static void find_best_kpc(void) {
             min_time = run_time;
 
         if (do_benchmark) {
-            fprintf(stderr, "kpc: %6zu\t%4lu c/s%14u rounds/s%8.3f sec per crypt_all()",
+            fprintf(stderr, "gws: %6zu\t%4lu c/s%14u rounds/s%8.3f sec per crypt_all()",
                     num, (long) (num / (run_time / 1000000000.)), SHAspeed,
                     (float) run_time / 1000000000.);
 
@@ -432,18 +443,18 @@ static void find_best_kpc(void) {
             if (do_benchmark)
                 fprintf(stderr, "+");
             bestSHAspeed = SHAspeed;
-            optimal_kpc = num;
+            optimal_gws = num;
         }
         if (do_benchmark)
             fprintf(stderr, "\n");
     }
-    printf("Optimal keys per crypt %d\n", optimal_kpc);
+    printf("Optimal global work size %d\n", optimal_gws);
     printf("(to avoid this test on next run, put \""
-        KPC_CONFIG " = %d\" in john.conf, section [" SECTION_OPTIONS
-        SUBSECTION_OPENCL "])\n", optimal_kpc);
-    max_keys_per_crypt = optimal_kpc;
+        GWS_CONFIG " = %d\" in john.conf, section [" SECTION_OPTIONS
+        SUBSECTION_OPENCL "])\n", optimal_gws);
+    global_work_size = optimal_gws;
     release_clobj();
-    create_clobj(optimal_kpc);
+    create_clobj(optimal_gws);
 }
 
 /* ------- Initialization  ------- */
@@ -473,7 +484,7 @@ static void init(struct fmt_main *pFmt) {
         printf("Elapsed time: %lu seconds\n", runtime);
     fflush(stdout);
 
-    max_keys_per_crypt = get_task_max_size();
+    global_work_size = get_task_max_size();
     local_work_size = get_default_workgroup();
 
     // create kernel to execute
@@ -496,30 +507,30 @@ static void init(struct fmt_main *pFmt) {
 
     if (!local_work_size) {
         local_work_size = get_task_max_work_group_size();
-        create_clobj(max_keys_per_crypt);
+        create_clobj(global_work_size);
         find_best_workgroup();
         release_clobj();
     }
 
     if ((tmp_value = cfg_get_param(SECTION_OPTIONS,
-                                   SUBSECTION_OPENCL, KPC_CONFIG)))
-        max_keys_per_crypt = atoi(tmp_value);
+                                   SUBSECTION_OPENCL, GWS_CONFIG)))
+        global_work_size = atoi(tmp_value);
 
-    if ((tmp_value = getenv("KPC")))
-        max_keys_per_crypt = atoi(tmp_value);
+    if ((tmp_value = getenv("GWS")))
+        global_work_size = atoi(tmp_value);
 
-    if (max_keys_per_crypt)
-        create_clobj(max_keys_per_crypt);
+    if (global_work_size)
+        create_clobj(global_work_size);
 
     else {
         //user chose to die of boredom
-        max_keys_per_crypt = get_task_max_size();
-        create_clobj(max_keys_per_crypt);
-        find_best_kpc();
+        global_work_size = get_task_max_size();
+        create_clobj(global_work_size);
+        find_best_gws();
     }
-    printf("Local work size (LWS) %d, Keys per crypt (KPC) %Zd\n",
-           (int) local_work_size, max_keys_per_crypt);
-    pFmt->params.max_keys_per_crypt = max_keys_per_crypt;
+    printf("Local work size (LWS) %d, global work size (GWS) %Zd\n",
+           (int) local_work_size, global_work_size);
+    pFmt->params.max_keys_per_crypt = global_work_size;
 }
 
 /* ------- Check if the ciphertext if a valid SHA-512 crypt ------- */
@@ -638,17 +649,17 @@ static void crypt_all(int count) {
             "failed in clEnqueueWriteBuffer data_info");
     if (new_keys)
         HANDLE_CLERROR(clEnqueueWriteBuffer(queue[gpu_id], pass_buffer, CL_FALSE, 0,
-                sizeof(sha512_password) * max_keys_per_crypt, plaintext, 0, NULL, NULL),
+                sizeof(sha512_password) * global_work_size, plaintext, 0, NULL, NULL),
                 "failed in clEnqueueWriteBuffer buffer_in");
 
     //Enqueue the kernel
     HANDLE_CLERROR(clEnqueueNDRangeKernel(queue[gpu_id], crypt_kernel, 1, NULL,
-            &max_keys_per_crypt, &local_work_size, 0, NULL, NULL),
+            &global_work_size, &local_work_size, 0, NULL, NULL),
             "failed in clEnqueueNDRangeKernel");
 
     //Read back hashes
     HANDLE_CLERROR(clEnqueueReadBuffer(queue[gpu_id], hash_buffer, CL_FALSE, 0,
-            sizeof(sha512_hash) * max_keys_per_crypt, calculated_hash, 0, NULL, NULL),
+            sizeof(sha512_hash) * global_work_size, calculated_hash, 0, NULL, NULL),
             "failed in reading data back");
 
     //Do the work
@@ -670,7 +681,7 @@ static void print_binary(void * binary) {
 static void print_hash() {
     int i;
 
-    for (i = 0; i < max_keys_per_crypt; i++)
+    for (i = 0; i < global_work_size; i++)
         if (calculated_hash[i].v[0] == 12)
             printf("Value: %lu, %d\n ", calculated_hash[i].v[0], i);
 
@@ -757,7 +768,6 @@ struct fmt_main fmt_opencl_cryptsha512 = {
         },
         cmp_all,
         cmp_one,
-        cmp_exact,
-		fmt_default_get_source
+        cmp_exact
     }
 };
