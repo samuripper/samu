@@ -21,8 +21,9 @@
 #define MIN(a,b) 		((a)<(b)?(a):(b))
 #define MAX(a,b) 		((a)>(b)?(a):(b))
 
+#define ALGORITHM_NAME		"OpenCL"
 #define FORMAT_LABEL		"cryptmd5-opencl"
-#define FORMAT_NAME		"CRYPTMD5-OPENCL"
+#define FORMAT_NAME		"CRYPTMD5"
 #define KERNEL_NAME		"cryptmd5"
 
 #define CRYPT_TYPE		"MD5-based CRYPT"

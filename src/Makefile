@@ -75,20 +75,6 @@ PLUGFORMATS_SRCS: sh =echo *_plug.c
 PLUGFORMATS_SRCS += $(wildcard *_plug.c)
 PLUGFORMATS_OBJS = $(PLUGFORMATS_SRCS:.c=.o)
 
-ifdef NVIDIA_CUDA
-OCLROOT=$(NVIDIA_CUDA)
-else
-OCLROOT=/usr/local/cuda
-endif
-ifdef AMDAPPSDKROOT
-OCLROOT=$(AMDAPPSDKROOT)
-endif
-ifdef ATISTREAMSDKROOT
-OCLROOT=$(ATISTREAMSDKROOT)
-endif
-
-
-
 JOHN_OBJS = \
 	$(MPIOBJ) \
 	DES_fmt.o DES_std.o DES_bs.o DES_bs_b.o \
