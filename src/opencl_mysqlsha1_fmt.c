@@ -20,7 +20,7 @@
 
 #define FORMAT_LABEL			"mysql-sha1-opencl"
 #define FORMAT_NAME			"MySQL 4.1 double-SHA-1"
-#define ALGORITHM_NAME			"OpenCL"
+#define ALGORITHM_NAME			"mysql-sha1-opencl"
 #define SHA_TYPE                        "SHA-1"
 #define BENCHMARK_COMMENT		""
 #define BENCHMARK_LENGTH		0
@@ -101,14 +101,14 @@ static void find_best_workgroup(void){
 			local_work_size = my_work_group;
 		}
 	}
-	//printf("Optimal local work size %d\n",(int)local_work_size);
-        //printf("(to avoid this test on next run do export LWS=%d)\n",(int)local_work_size);
+	printf("Optimal local work size %d\n",(int)local_work_size);
+        printf("(to avoid this test on next run do export LWS=%d)\n",(int)local_work_size);
 	clReleaseCommandQueue(queue_prof);
 }
 
 static void create_clobj(int kpc){
     pinned_msha_keys = clCreateBuffer(context[gpu_id], CL_MEM_READ_WRITE | CL_MEM_ALLOC_HOST_PTR, (PLAINTEXT_LENGTH)*kpc, NULL, &ret_code);
-    HANDLE_CLERROR(ret_code, "Error creating page-locked memory pinned_msha_keys");
+    HANDLE_CLERROR(ret_code, "Error creating page-locked memory");
     mysqlsha_plain = (char*)clEnqueueMapBuffer(queue[gpu_id], pinned_msha_keys, CL_TRUE, CL_MAP_WRITE | CL_MAP_READ, 0, (PLAINTEXT_LENGTH)*kpc, 0, NULL, NULL, &ret_code);
     HANDLE_CLERROR(ret_code, "Error mapping page-locked memory mysqlsha_plain");
     memset(mysqlsha_plain, 0, PLAINTEXT_LENGTH * kpc);
@@ -165,8 +165,7 @@ static void find_best_kpc(void){
     cl_uint *tmpbuffer;
 
     printf("Calculating best keys per crypt, this will take a while ");
-    //for( num=SHA_NUM_KEYS; num > 4096 ; num -= 16384 ){
-    for( num=local_work_size; num <= SHA_NUM_KEYS ; num<<=1){
+    for( num=SHA_NUM_KEYS; num > 4096 ; num -= 4096){
         release_clobj();
 	create_clobj(num);
 	advance_cursor();

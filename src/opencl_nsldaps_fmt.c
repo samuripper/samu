@@ -29,9 +29,8 @@
 #include "base64.h"
 #include "common-opencl.h"
 
-#define ALGORITHM_NAME			"OpenCL"
 #define FORMAT_LABEL			"ssha-opencl"
-#define FORMAT_NAME			"Netscape LDAPS"
+#define FORMAT_NAME			"Netscape LDAP SSHA OPENCL"
 #define SHA_TYPE                        "salted SHA-1"
 
 #define BENCHMARK_COMMENT		""
