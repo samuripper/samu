@@ -48,15 +48,6 @@ extern int gpu_id;
 struct options_main options;
 static char *field_sep_char_string;
 
-#if defined (__MINGW32__) || defined (_MSC_VER)
-// Later versions of MSVC can handle %lld but some older
-// ones can only handle %I64d.  Easiest to simply use
-// %I64d then all versions of MSVC will handle it just fine
-#define LLd "%I64d"
-#else
-#define LLd "%lld"
-#endif
-
 static struct opt_entry opt_list[] = {
 	{"", FLG_PASSWD, 0, 0, 0, OPT_FMT_ADD_LIST, &options.passwd},
 	{"single", FLG_SINGLE_SET, FLG_CRACKING_CHK, 0, 0,
@@ -175,7 +166,7 @@ static struct opt_entry opt_list[] = {
 "                --pipe    like --stdin, but bulk reads, and allows rules\n" \
 "--encoding=NAME           the input data is in a 'non-standard' character.\n" \
 "                          encoding. NAME = utf-8, koi8-r, and others. For a\n" \
-"                          full list, use --encoding=LIST\n" \
+"                          full list, use --list=encodings\n" \
 "--rules[=SECTION]         enable word mangling rules for wordlist mode\n" \
 "--incremental[=MODE]      \"incremental\" mode [using section MODE]\n" \
 "--markov[=LEVEL[:opts]]   \"Markov\" mode (see documentation)\n" \
@@ -206,22 +197,22 @@ static struct opt_entry opt_list[] = {
 "--nolog                   disables creation and writing to john.log file\n" \
 "--crack-status            emit a status line whenever a password is cracked\n" \
 "--max-run-time=N          gracefully exit after this many seconds\n" \
-"--regen-lost-salts=N      regenerate lost salts for some hashes (see doc/OPTIONS)\n"
+"--regen-lost-salts=N      regenerate lost salts (see doc/OPTIONS)\n"
 
 #define JOHN_USAGE_PLUGIN \
 "--plugin=NAME[,..]        load this (these) dynamic plugin(s)\n"
 
 #if defined(CL_VERSION_1_0) && defined(HAVE_CUDA)
 #define JOHN_USAGE_GPU \
-"--platform=N (or =LIST)   set OpenCL platform, default 0\n" \
-"--device=N                set OpenCL or CUDA device, default 0\n"
+"--platform=N              set OpenCL platform (list using --list=opencl-devices)\n" \
+"--device=N                set OpenCL or CUDA device\n"
 #elif defined(CL_VERSION_1_0)
 #define JOHN_USAGE_GPU \
-"--platform=N (or =LIST)   set OpenCL platform, default 0\n" \
-"--device=N                set OpenCL device, default 0\n"
+"--platform=N              set OpenCL platform\n" \
+"--device=N                set OpenCL device (list using --list=opencl-devices)\n"
 #elif defined (HAVE_CUDA)
 #define JOHN_USAGE_GPU \
-"--device=N                set CUDA device, default 0\n"
+"--device=N                set CUDA device\n"
 #endif
 
 static int qcmpstr(const void *p1, const void *p2)
@@ -296,7 +287,8 @@ void opt_init(char *name, int argc, char **argv)
 	options.loader.field_sep_char = options.field_sep_char = ':';
 	options.loader.regen_lost_salts = options.regen_lost_salts = 0;
 	options.loader.max_fix_state_delay = 0;
-	options.loader.max_wordfile_memory = 5000000;
+	options.loader.max_wordfile_memory =
+		WORDLIST_BUFFER_DEFAULT >> mem_saving_level;
 	options.mkpc = 0;
 	options.max_run_time = 0;
 
@@ -341,11 +333,6 @@ void opt_init(char *name, int argc, char **argv)
 	}
 
 #ifdef CL_VERSION_1_0
-	if ((options.ocl_platform && !strcasecmp(options.ocl_platform, "list")) ||
-	    (options.ocl_device && !strcasecmp(options.ocl_device, "list"))) {
-		listOpenCLdevices();
-		exit(0);
-	}
 	if (options.ocl_platform)
 		platform_id = atoi(options.ocl_platform);
 #endif
@@ -428,62 +415,6 @@ void opt_init(char *name, int argc, char **argv)
 		fprintf(stderr, "Password files specified, "
 			"but no option would use them\n");
 		error();
-	}
-
-	if (options.flags & FLG_MKV_CHK) {
-		char * token;
-
-		options.mkv_start = 0;
-		options.mkv_end = 0;
-		options.mkv_maxlen = 0;
-		options.mkv_minlevel = 0;
-		options.mkv_minlen = 0;
-		if (options.mkv_param)
-		{
-			token = strtok(options.mkv_param, ":");
-			if(sscanf(token, "%d-%d", &options.mkv_minlevel, &options.mkv_level) != 2)
-			{
-				options.mkv_minlevel = 0;
-				if (sscanf(token, "%d", &options.mkv_level) != 1)
-				{
-#ifdef HAVE_MPI
-					if (mpi_id == 0)
-#endif
-					fprintf(stderr, "Could not parse markov parameters\n");
-					error();
-				}
-			}
-			token = strtok(NULL, ":");
-			if( (token != NULL) && (sscanf(token, LLd, &options.mkv_start)==1) )
-			{
-				token = strtok(NULL, ":");
-				if( (token != NULL) && (sscanf(token, LLd, &options.mkv_end)==1) )
-				{
-					token = strtok(NULL, ":");
-					if( (token != NULL) && (sscanf(token, "%d-%d", &options.mkv_minlen, &options.mkv_maxlen)!=2) )
-					{
-						options.mkv_minlen = 0;
-						sscanf(token, "%d", &options.mkv_maxlen);
-					}
-				}
-			}
-		}
-		if(options.mkv_level<options.mkv_minlevel)
-		{
-#ifdef HAVE_MPI
-			if (mpi_id == 0)
-#endif
-			fprintf(stderr, "Warning: max level(%d) < min level(%d), min level set to %d\n", options.mkv_level, options.mkv_minlevel, options.mkv_level);
-			options.mkv_minlevel = options.mkv_level;
-		}
-		if(options.mkv_minlen > options.mkv_maxlen)
-		{
-#ifdef HAVE_MPI
-			if (mpi_id == 0)
-#endif
-			fprintf(stderr, "Warning: minimum length(%d) < maximum length(%d), minimum length set to %d\n", options.mkv_minlen, options.mkv_maxlen, options.mkv_maxlen);
-			options.mkv_minlen = options.mkv_maxlen;
-		}
 	}
 
 #ifdef HAVE_MPI

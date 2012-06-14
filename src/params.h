@@ -163,13 +163,13 @@
  * Configuration file section names.
  */
 #define SECTION_OPTIONS			"Options"
-#define SUBSECTION_MARKOV		":Markov"
 #define SUBSECTION_MPI			":MPI"
 #define SECTION_RULES			"List.Rules:"
 #define SUBSECTION_SINGLE		"Single"
 #define SUBSECTION_WORDLIST		"Wordlist"
 #define SECTION_INC			"Incremental:"
 #define SECTION_EXT			"List.External:"
+#define SECTION_MARKOV			"Markov:"
 
 /*
  * Number of different password hash table sizes.
@@ -332,5 +332,9 @@ extern int password_hash_thresholds[PASSWORD_HASH_SIZES];
 /* Markov mode stuff */
 #define MAX_MKV_LVL 400
 #define MAX_MKV_LEN 30
+
+/* Default maximum size of wordlist memory buffer.
+   We shift it according to --save-memory */
+#define WORDLIST_BUFFER_DEFAULT		0x5000000
 
 #endif

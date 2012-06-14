@@ -49,7 +49,7 @@
 #define MSCASH2_PREFIX            "$DCC2$"
 
 
-#define MAX_PLAINTEXT_LENGTH      40
+#define MAX_PLAINTEXT_LENGTH      31
 
 #define MAX_CIPHERTEXT_LENGTH     7 + MAX_SALT_LENGTH + 32
 
@@ -80,12 +80,12 @@ static struct fmt_tests tests[] = {
 	{"$DCC2$nineteen_characters#c4201b8267d74a2db1d5d19f5c9f7b57", "verylongpassword" }, //max salt_length
 	{"$DCC2$nineteen_characters#87136ae0a18b2dafe4a41d555425b2ed", "w00t"},
 	{"$DCC2$administrator#56f8c24c5a914299db41f70e9b43f36d", "w00t" },
-	{"$DCC2$AdMiNiStRaToR#56f8C24c5A914299Db41F70e9b43f36d", "w00t" },   //Salt and hash are lowercased
-	{"$DCC2$TEST2#c6758e5be7fc943d00b97972a8a97620", "test2" },    // salt is lowercased before hashing
+	{"$DCC2$AdMiNiStRaToR#56f8C24c5A914299Db41F70e9b43f36d", "w00t" },                   //Salt and hash are lowercased
+	{"$DCC2$TEST2#c6758e5be7fc943d00b97972a8a97620", "test2" },                          // salt is lowercased before hashing
 	{"$DCC2$eighteencharacters#fc5df74eca97afd7cd5abb0032496223", "w00t" },
 	{"$DCC2$john-the-ripper#495c800a038d11e55fafc001eb689d1d", "batman#$@#1991" },
-	
-	
+	{"$DCC2$#59137848828d14b1fca295a5032b52a1", "a" },                                   //Empty Salt
+		
 	{NULL}
 };
 
@@ -209,11 +209,12 @@ static void init(struct fmt_main *pFmt)
   
 	memset(dcc2_hash_host,0,4*sizeof(cl_uint)*MAX_KEYS_PER_CRYPT);
 	
-	///Select devices select_device(int platform_no, int device_no)
+	select_device(platform_id,gpu_id);
+	///Select devices select_device(int platform_no, int device_no). You may select multiple devices for faster cracking spped. Please See common_opencl_pbkdf2.h
 	//select_device(1,0);
-	//select_device(1,1);
+	//select_device(0,0);
 	///select default platform=0 and default device=0
-	select_default_device();
+	//select_default_device();
 	
 	
 	atexit(cleanup);
@@ -290,12 +291,15 @@ static void cleanup()
 			
 }
 
-
 static int valid(char *ciphertext,struct fmt_main *pFmt)
 {   
 	char *hash;
+	
+	char *pos;
     
 	int hashlength = 0;
+	
+	int saltlength = 0;
 	
 	if(strncmp(ciphertext, MSCASH2_PREFIX, strlen(MSCASH2_PREFIX)) != 0) 		return 0;
 	
@@ -315,6 +319,19 @@ static int valid(char *ciphertext,struct fmt_main *pFmt)
 	
 	if (hashlength != 32)  return 0;
 	
+	saltlength=0;
+  
+	pos=ciphertext + strlen(MSCASH2_PREFIX);
+  
+	while (*pos != '#')
+	      {   
+		if(saltlength==(MAX_SALT_LENGTH))
+		return 0; 
+	  
+		saltlength++; 
+		pos++;
+	      } 
+	
 	return 1;
 }
 
@@ -333,10 +350,6 @@ static char * split(char *ciphertext, int index)
 
 	return out;
 }
-
-
-
-
 
 static void *binary(char *ciphertext)
 {

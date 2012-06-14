@@ -59,6 +59,9 @@
 #ifdef CL_VERSION_1_0
 #include "common-opencl.h"
 #endif
+#ifdef HAVE_CUDA
+extern void cuda_device_list();
+#endif
 #ifdef NO_JOHN_BLD
 #define JOHN_BLD "unk-build-type"
 #else
@@ -557,7 +560,17 @@ static void john_init(char *name, int argc, char **argv)
 	if (options.listconf && !strcasecmp(options.listconf, "?"))
 	{
 		puts("subformats, inc-modes, rules, externals, ext-filters, ext-filters-only,");
-		puts("ext-modes, build-info, hidden-options, <conf section name>");
+		puts("ext-modes, build-info, hidden-options, encodings, formats,");
+#ifdef CL_VERSION_1_0
+		printf("opencl-devices, ");
+#endif
+#ifdef HAVE_CUDA
+		printf("cuda-devices, ");
+#endif
+		/* NOTE: The following must end the list. Anything listed
+		   after <conf section name> will be ignored by current
+		   bash completion scripts. */
+		puts("<conf section name>");
 		exit(0);
 	}
 	if (options.listconf && !strcasecmp(options.listconf, "hidden-options"))
@@ -629,6 +642,14 @@ static void john_init(char *name, int argc, char **argv)
 		}
 	}
 
+	/* This is --crack-status. We toggle here, so if it's enabled in
+	   john.conf, we can disable it using the command line option */
+	if (cfg_get_bool(SECTION_OPTIONS, NULL, "CrackStatus", 0))
+		options.flags ^= FLG_CRKSTAT;
+
+	initUnicode(UNICODE_UNICODE); /* Init the unicode system */
+
+	john_register_all(); /* maybe restricted to one format by options */
 	if ((options.subformat && !strcasecmp(options.subformat, "list")) ||
 	    (options.listconf && !strcasecmp(options.listconf, "subformats")))
 	{
@@ -669,20 +690,77 @@ static void john_init(char *name, int argc, char **argv)
 		cfg_print_subsections("List.External", "generate", NULL);
 		exit(0);
 	}
-	/* Catch-all for any other john.conf section name :-) */
+	if (options.listconf && !strcasecmp(options.listconf, "encodings"))
+	{
+		listEncodings();
+		exit(0);
+	}
+#ifdef CL_VERSION_1_0
+	if (options.listconf && !strcasecmp(options.listconf, "opencl-devices"))
+	{
+		listOpenCLdevices();
+		exit(0);
+	}
+#endif
+#ifdef HAVE_CUDA
+	if (options.listconf && !strcasecmp(options.listconf, "cuda-devices"))
+	{
+		cuda_device_list();
+		exit(0);
+	}
+#endif
+	if (options.listconf &&
+	    !strcasecmp(options.listconf, "formats")) {
+		int column;
+		struct fmt_main *format;
+		int i, dynamics = 0;
+		char **formats_list;
+
+		i = 0;
+		format = fmt_list;
+		while ((format = format->next))
+			i++;
+
+		formats_list = malloc(sizeof(char*) * i);
+
+		i = 0;
+		format = fmt_list;
+		do {
+			char *label = format->params.label;
+			if (!strncmp(label, "dynamic", 7)) {
+				if (dynamics++)
+					continue;
+				else
+					label = "dynamic_n";
+			}
+			formats_list[i++] = label;
+		} while ((format = format->next));
+		formats_list[i] = NULL;
+
+		column = 0;
+		i = 0;
+		do {
+			int length;
+			char *label = formats_list[i++];
+			length = strlen(label) + 2;
+			column += length;
+			if (column > 78) {
+				printf("\n");
+				column = length;
+			}
+			printf("%s%s", label, formats_list[i] ? ", " : "\n");
+		} while (formats_list[i]);
+		free(formats_list);
+		exit(0);
+	}
+	/* --list last resort: list subsections of any john.conf section name */
 	if (options.listconf)
 	{
+		printf("Subsections of [%s]:\n", options.listconf);
 		cfg_print_subsections(options.listconf, NULL, NULL);
 		exit(0);
 	}
-	/* This is --crack-status. We toggle here, so if it's enabled in
-	   john.conf, we can disable it using the command line option */
-	if (cfg_get_bool(SECTION_OPTIONS, NULL, "CrackStatus", 0))
-		options.flags ^= FLG_CRKSTAT;
 
-	initUnicode(UNICODE_UNICODE); /* Init the unicode system */
-
-	john_register_all(); /* maybe restricted to one format by options */
 	common_init();
 	sig_init();
 
@@ -750,7 +828,7 @@ static void john_run(void)
 			do_incremental_crack(&database, options.charset);
 		else
 		if (options.flags & FLG_MKV_CHK)
-			do_markov_crack(&database, options.mkv_level, options.mkv_start, options.mkv_end, options.mkv_maxlen, options.mkv_minlevel, options.mkv_minlen);
+			do_markov_crack(&database, options.mkv_param);
 		else
 		if (options.flags & FLG_EXTERNAL_CHK)
 			do_external_crack(&database);
