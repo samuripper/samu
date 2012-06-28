@@ -11,12 +11,12 @@
 #include "cuda_cryptsha512.h"
 #include "cuda_common.h"
 
-#define FORMAT_LABEL		"cryptsha512-cuda"
-#define FORMAT_NAME		FORMAT_LABEL
+#define FORMAT_LABEL		"sha512crypt-cuda"
+#define FORMAT_NAME		"sha512crypt"
 
-#define PHPASS_TYPE		"SHA512-based CRYPT"
+#define ALGORITHM_NAME		"CUDA"
 
-#define BENCHMARK_COMMENT	""
+#define BENCHMARK_COMMENT	" (rounds=5000)"
 #define BENCHMARK_LENGTH	-1
 
 #define PLAINTEXT_LENGTH	15
@@ -70,7 +70,7 @@ static void cleanup()
 static void init(struct fmt_main *pFmt)
 {
   //Alocate memory for hashes and passwords
-  inbuffer=(crypt_sha512_password*)malloc(sizeof(crypt_sha512_password)*MAX_KEYS_PER_CRYPT);
+  inbuffer=(crypt_sha512_password*)calloc(MAX_KEYS_PER_CRYPT,sizeof(crypt_sha512_password));
   outbuffer=(crypt_sha512_hash*)malloc(sizeof(crypt_sha512_hash)*MAX_KEYS_PER_CRYPT);
   check_mem_allocation(inbuffer,outbuffer);
   atexit(cleanup);
@@ -334,7 +334,7 @@ struct fmt_main fmt_cuda_cryptsha512 = {
 	{
 		    FORMAT_LABEL,
 		    FORMAT_NAME,
-		    PHPASS_TYPE,
+		    ALGORITHM_NAME,
 		    BENCHMARK_COMMENT,
 		    BENCHMARK_LENGTH,
 		    PLAINTEXT_LENGTH,

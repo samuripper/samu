@@ -27,7 +27,7 @@
 #include "formats.h"
 
 #define FORMAT_LABEL			"raw-sha512-opencl"
-#define FORMAT_NAME			"SHA-512"
+#define FORMAT_NAME			"Raw SHA-512"
 #define ALGORITHM_NAME			"OpenCL"
 
 #define BENCHMARK_COMMENT		""
@@ -196,7 +196,7 @@ static void find_best_workgroup()
 		}
 		//printf("%d time=%lld\n",(int) my_work_group, endTime-startTime);
 	}
-	printf("Optimal Group work Size = %d\n", (int) local_work_size);
+	printf("Optimal local work size = %d\n", (int) local_work_size);
 	clReleaseCommandQueue(queue_prof);
 }
 

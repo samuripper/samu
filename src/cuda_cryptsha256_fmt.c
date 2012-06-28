@@ -13,12 +13,12 @@
 #include "cuda_common.h"
 #include <unistd.h>
 
-#define FORMAT_LABEL		"cryptsha256-cuda"
-#define FORMAT_NAME		FORMAT_LABEL
+#define FORMAT_LABEL		"sha256crypt-cuda"
+#define FORMAT_NAME		"sha256crypt"
 
-#define CRYPT_TYPE		"SHA256-based CRYPT"
+#define ALGORITHM_NAME		"CUDA"
 
-#define BENCHMARK_COMMENT	""
+#define BENCHMARK_COMMENT	" (rounds=5000)"
 #define BENCHMARK_LENGTH	-1
 
 #define PLAINTEXT_LENGTH	15
@@ -90,7 +90,7 @@ static void cleanup()
 static void init(struct fmt_main *pFmt)
 {
   //Alocate memory for hashes and passwords
-  inbuffer=(crypt_sha256_password*)malloc(sizeof(crypt_sha256_password)*MAX_KEYS_PER_CRYPT);
+  inbuffer=(crypt_sha256_password*)calloc(MAX_KEYS_PER_CRYPT,sizeof(crypt_sha256_password));
   outbuffer=(uint32_t*)malloc(sizeof(uint32_t)*MAX_KEYS_PER_CRYPT*8);
   check_mem_allocation(inbuffer,outbuffer);
   atexit(cleanup);
@@ -353,7 +353,7 @@ struct fmt_main fmt_cuda_cryptsha256 = {
 	{
 		    FORMAT_LABEL,
 		    FORMAT_NAME,
-		    CRYPT_TYPE,
+		    ALGORITHM_NAME,
 		    BENCHMARK_COMMENT,
 		    BENCHMARK_LENGTH,
 		    PLAINTEXT_LENGTH,

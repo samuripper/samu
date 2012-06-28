@@ -54,7 +54,9 @@ static struct opt_entry opt_list[] = {
 		OPT_FMT_STR_ALLOC, &options.loader.activesinglerules},
 	{"wordlist", FLG_WORDLIST_SET, FLG_CRACKING_CHK,
 		0, 0, OPT_FMT_STR_ALLOC, &options.wordlist},
-	{"encoding", FLG_INP_ENCODING, FLG_INP_ENCODING,
+	{"loopback", FLG_LOOPBACK_SET | FLG_DUPESUPP, FLG_CRACKING_CHK,
+		0, 0, OPT_FMT_STR_ALLOC, &options.wordlist},
+	{"encoding", FLG_NONE, FLG_NONE,
 		0, 0, OPT_FMT_STR_ALLOC, &options.encoding},
 	{"stdin", FLG_STDIN_SET, FLG_CRACKING_CHK},
 #if defined (_MSC_VER) || defined (__MINGW32__) || defined (__CYGWIN32__)
@@ -90,8 +92,8 @@ static struct opt_entry opt_list[] = {
 		0, FLG_CRACKING_SUP | FLG_MAKECHR_CHK,
 		OPT_FMT_STR_ALLOC, &options.showuncracked_str},
 	{"test", FLG_TEST_SET, FLG_TEST_CHK,
-		0, ~FLG_TEST_SET & ~FLG_FORMAT & ~FLG_SAVEMEM & ~FLG_CONFIG_CLI & ~FLG_DYNFMT &
-		~OPT_REQ_PARAM & ~FLG_NOLOG & ~FLG_INP_ENCODING, "%u", &benchmark_time},
+		0, ~FLG_TEST_SET & ~FLG_FORMAT & ~FLG_SAVEMEM & ~FLG_DYNFMT &
+		~OPT_REQ_PARAM & ~FLG_NOLOG, "%u", &benchmark_time},
 	{"users", FLG_NONE, 0, FLG_PASSWD, OPT_REQ_PARAM,
 		OPT_FMT_ADD_LIST_MULTI, &options.loader.users},
 	{"groups", FLG_NONE, 0, FLG_PASSWD, OPT_REQ_PARAM,
@@ -116,18 +118,24 @@ static struct opt_entry opt_list[] = {
 	{"plugin", FLG_DYNFMT, 0, 0, OPT_REQ_PARAM,
 		OPT_FMT_ADD_LIST_MULTI,	&options.fmt_dlls},
 #endif
-	{"mem-file-size", FLG_NONE, FLG_NONE, 0, OPT_REQ_PARAM,
+	{"mem-file-size", FLG_NONE, FLG_NONE, FLG_WORDLIST_CHK, FLG_DUPESUPP |
+		FLG_SAVEMEM | FLG_STDIN_CHK | FLG_PIPE_CHK | OPT_REQ_PARAM,
 		"%u", &options.loader.max_wordfile_memory},
+	{"dupe-suppression", FLG_DUPESUPP, FLG_DUPESUPP, FLG_WORDLIST_CHK,
+		FLG_SAVEMEM | FLG_STDIN_CHK | FLG_PIPE_CHK},
 	{"fix-state-delay", FLG_NONE, FLG_NONE, 0, OPT_REQ_PARAM,
 		"%u", &options.loader.max_fix_state_delay},
 	{"field-separator-char", FLG_NONE, FLG_NONE, 0, OPT_REQ_PARAM,
 		OPT_FMT_STR_ALLOC, &field_sep_char_string},
-	{"config", FLG_CONFIG_CLI, FLG_NONE, 0, OPT_REQ_PARAM,
+	{"config", FLG_NONE, FLG_NONE, 0, OPT_REQ_PARAM,
 		OPT_FMT_STR_ALLOC, &options.config},
 	{"nolog", FLG_NOLOG, FLG_NOLOG},
+	{"log-stderr", FLG_LOG_STDERR | FLG_NOLOG, FLG_LOG_STDERR},
 	{"crack-status", FLG_CRKSTAT, FLG_CRKSTAT},
 	{"mkpc", FLG_NONE, FLG_NONE, 0, OPT_REQ_PARAM,
-		"%u", &options.mkpc},
+		"%u", &options.force_maxkeys},
+	{"length", FLG_NONE, FLG_NONE, 0, FLG_STDOUT | OPT_REQ_PARAM,
+		"%u", &options.force_maxlength},
 	{"max-run-time", FLG_NONE, FLG_NONE, 0, OPT_REQ_PARAM,
 		"%u", &options.max_run_time},
 	{"regen-lost-salts", FLG_NONE, FLG_NONE, 0, OPT_REQ_PARAM,
@@ -156,20 +164,21 @@ static struct opt_entry opt_list[] = {
 
 #define JOHN_USAGE \
 "John the Ripper password cracker, ver: " JOHN_VERSION _MP_VERSION " [" JOHN_BLD "]\n" \
-"Copyright (c) 1996-2011 by " JOHN_COPYRIGHT "\n" \
+"Copyright (c) 1996-2012 by " JOHN_COPYRIGHT "\n" \
 "Homepage: http://www.openwall.com/john/\n" \
 "\n" \
 "Usage: %s [OPTIONS] [PASSWORD-FILES]\n" \
 "--config=FILE             use FILE instead of john.conf or john.ini\n" \
 "--single[=SECTION]        \"single crack\" mode\n" \
-"--wordlist=FILE --stdin   wordlist mode, read words from FILE or stdin\n" \
-"                --pipe    like --stdin, but bulk reads, and allows rules\n" \
-"--encoding=NAME           the input data is in a 'non-standard' character.\n" \
-"                          encoding. NAME = utf-8, koi8-r, and others. For a\n" \
-"                          full list, use --list=encodings\n" \
-"--rules[=SECTION]         enable word mangling rules for wordlist mode\n" \
+"--wordlist[=FILE] --stdin wordlist mode, read words from FILE or stdin\n" \
+"                  --pipe  like --stdin, but bulk reads, and allows rules\n" \
+"--loopback[=FILE]         like --wordlist, but fetch words from a .pot file\n" \
+"--dupe-suppression        suppress all dupes in wordlist (and force preload)\n" \
+"--encoding=NAME           input data is non-ascii (eg. UTF-8, ISO-8859-1).\n" \
+"                          For a full list of NAME use --list=encodings\n" \
+"--rules[=SECTION]         enable word mangling rules for wordlist modes\n" \
 "--incremental[=MODE]      \"incremental\" mode [using section MODE]\n" \
-"--markov[=LEVEL[:opts]]   \"Markov\" mode (see documentation)\n" \
+"--markov[=options]        \"Markov\" mode (see doc/MARKOV)\n" \
 "--external=MODE           external mode or word filter\n" \
 "--stdout[=LENGTH]         just output candidate passwords [cut at LENGTH]\n" \
 "--restore[=NAME]          restore an interrupted session [called NAME]\n" \
@@ -192,8 +201,6 @@ static struct opt_entry opt_list[] = {
 "--list=WHAT               list capabilities, see doc/OPTIONS or --list=?\n" \
 "--save-memory=LEVEL       enable memory saving, at LEVEL 1..3\n" \
 "--mem-file-size=SIZE      size threshold for wordlist preload (default 5 MB)\n" \
-"--field-separator-char=C  use 'C' instead of the ':' in input and pot files\n" \
-"--fix-state-delay=N       performance tweak, see documentation\n" \
 "--nolog                   disables creation and writing to john.log file\n" \
 "--crack-status            emit a status line whenever a password is cracked\n" \
 "--max-run-time=N          gracefully exit after this many seconds\n" \
@@ -287,10 +294,9 @@ void opt_init(char *name, int argc, char **argv)
 	options.loader.field_sep_char = options.field_sep_char = ':';
 	options.loader.regen_lost_salts = options.regen_lost_salts = 0;
 	options.loader.max_fix_state_delay = 0;
-	options.loader.max_wordfile_memory =
-		WORDLIST_BUFFER_DEFAULT >> mem_saving_level;
-	options.mkpc = 0;
-	options.max_run_time = 0;
+	options.loader.max_wordfile_memory = WORDLIST_BUFFER_DEFAULT;
+	options.force_maxkeys = options.force_maxlength = 0;
+	options.max_run_time = -2;
 
 	list_init(&options.passwd);
 

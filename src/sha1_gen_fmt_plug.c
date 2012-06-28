@@ -62,12 +62,16 @@ static int valid(char *ciphertext, struct fmt_main *pFmt)
 
 static void *get_binary(char *ciphertext)
 {
-	static unsigned char out[BINARY_SIZE];
+	static union {
+		unsigned char c[BINARY_SIZE];
+		ARCH_WORD dummy;
+	} buf;
+	unsigned char *out = buf.c;
 	char *p;
 	int i;
 
 	p = strrchr(ciphertext, '$') + 1;
-	for (i = 0; i < sizeof(out); i++) {
+	for (i = 0; i < BINARY_SIZE; i++) {
 		out[i] =
 		    (atoi16[ARCH_INDEX(*p)] << 4) |
 		    atoi16[ARCH_INDEX(p[1])];
@@ -84,7 +88,7 @@ static void *salt(char *ciphertext)
 	char *p;
 	int length;
 
-	memset(out, 0, sizeof(out));
+	memset(out, 0, SALT_SIZE);
 	p = ciphertext + 7;
 	length = strrchr(ciphertext, '$') - p;
 	out[0] = length;

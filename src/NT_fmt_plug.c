@@ -141,7 +141,7 @@ static void swap(unsigned int *x, unsigned int *y, int count)
 	unsigned int nt_buffer1x[16*NT_NUM_KEYS1];
 	unsigned int output1x[4*NT_NUM_KEYS1];
 
-	#define ALGORITHM_NAME		"128/128 SSE2 + 32/32"
+	#define ALGORITHM_NAME		"128/128 SSE2 + 32/" ARCH_BITS_STR
 	#define NT_CRYPT_FUN		nt_crypt_all_sse2
 	extern void nt_crypt_all_sse2(int count);
 #else
@@ -149,7 +149,7 @@ static void swap(unsigned int *x, unsigned int *y, int count)
 	unsigned int nt_buffer1x[16*NT_NUM_KEYS];
 	unsigned int output1x[4*NT_NUM_KEYS];
 
-	#define ALGORITHM_NAME		"32/32"
+	#define ALGORITHM_NAME		"32/" ARCH_BITS_STR
 	#define NT_CRYPT_FUN		nt_crypt_all_generic
 	static void nt_crypt_all_generic(int count)
 	{
@@ -343,8 +343,8 @@ static char *prepare(char *split_fields[10], struct fmt_main *pFmt)
 static void *get_binary(char *ciphertext)
 {
 	static union {
-		unsigned long u64[16/sizeof(unsigned long)];
-		unsigned int u32[16/sizeof(unsigned int)];
+		unsigned long u64[BINARY_SIZE/sizeof(unsigned long)];
+		unsigned int u32[BINARY_SIZE/sizeof(unsigned int)];
 	} outbuf;
 	unsigned int *out = (unsigned int*)outbuf.u32;
 	unsigned int i=0;

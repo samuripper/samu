@@ -59,6 +59,12 @@ extern char *cfg_name;
  */
 extern void cfg_init(char *name, int allow_missing);
 
+
+/*
+ * Returns a section list entry, or NULL if not found
+ */
+extern struct cfg_section *cfg_get_section(char *section, char *subsection);
+
 /*
  * Searches for a section with the supplied name, and returns its line list
  * structure, or NULL if the search fails.
@@ -72,7 +78,7 @@ extern struct cfg_list *cfg_get_list(char *section, char *subsection);
  * If notfunction is non-null, that function must NOT be present (ie.
  * for listing external modes that has filter() but not generate() )
  */
-void cfg_print_subsections(char *section, char *function, char *notfunction);
+int cfg_print_subsections(char *section, char *function, char *notfunction, int print_heading);
 
 /*
  * Searches for a section with the supplied name and a parameter within the

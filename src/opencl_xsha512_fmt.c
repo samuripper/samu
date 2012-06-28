@@ -133,7 +133,7 @@ static void set_key(char *key, int index)
 	if (length > PLAINTEXT_LENGTH)
 		length = PLAINTEXT_LENGTH;
 	gkey[index].length = length;
-	//memcpy(gkey[index].v, key, length);
+	memcpy(gkey[index].v, key, length);
 	xsha512_key_changed = 1;
 }
 
@@ -209,7 +209,7 @@ static void find_best_workgroup()
 		}
 		//printf("%d time=%lld\n",(int) my_work_group, endTime-startTime);
 	}
-	printf("Optimal Group work Size = %d\n", (int) local_work_size);
+	printf("Optimal local work size= %d\n", (int) local_work_size);
 	clReleaseCommandQueue(queue_prof);
 }
 

@@ -34,19 +34,19 @@
 #include "misc.h"
 
 #define FORMAT_LABEL        "ssh"
-#define FORMAT_NAME         "SSH"
+#define FORMAT_NAME         "SSH RSA/DSA"
 #define ALGORITHM_NAME      "32/" ARCH_BITS_STR
-#define BENCHMARK_COMMENT   " - one 2048-bit and one 1024-bit key"
+#define BENCHMARK_COMMENT   " (one 2048-bit RSA and one 1024-bit DSA key)"
 #define BENCHMARK_LENGTH    -1001
 #define PLAINTEXT_LENGTH    32
 #define BINARY_SIZE         0
-#define SALT_SIZE           4224
+#define SALT_SIZE           sizeof(struct custom_salt)
 #define MIN_KEYS_PER_CRYPT  1
 #define MAX_KEYS_PER_CRYPT  1
 
-static int omp_t = 1;
 static char (*saved_key)[PLAINTEXT_LENGTH + 1];
 static int any_cracked, *cracked;
+static size_t cracked_size;
 
 static struct custom_salt {
 	long len;
@@ -81,6 +81,7 @@ static void init(struct fmt_main *pFmt)
 		fmt_ssh.params.flags &= ~FMT_OMP;
 	}
 	else {
+		int omp_t = 1;
 		omp_t = omp_get_max_threads();
 		pFmt->params.min_keys_per_crypt *= omp_t;
 		omp_t *= OMP_SCALE;
@@ -90,8 +91,8 @@ static void init(struct fmt_main *pFmt)
 	saved_key = mem_calloc_tiny(sizeof(*saved_key) *
 			pFmt->params.max_keys_per_crypt, MEM_ALIGN_NONE);
 	any_cracked = 0;
-	cracked = mem_calloc_tiny(sizeof(*cracked) *
-			pFmt->params.max_keys_per_crypt, MEM_ALIGN_WORD);
+	cracked_size = sizeof(*cracked) * pFmt->params.max_keys_per_crypt;
+	cracked = mem_calloc_tiny(cracked_size, MEM_ALIGN_WORD);
 }
 
 static int valid(char *ciphertext, struct fmt_main *pFmt)
@@ -287,8 +288,7 @@ static void set_salt(void *salt)
 	/* restore custom_salt back */
 	restored_custom_salt = (struct custom_salt *) salt;
 	if (any_cracked) {
-		memset(cracked, 0,
-		    sizeof(*cracked) * omp_t * MAX_KEYS_PER_CRYPT);
+		memset(cracked, 0, cracked_size);
 		any_cracked = 0;
 	}
 }

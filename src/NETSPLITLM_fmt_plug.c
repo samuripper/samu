@@ -32,7 +32,7 @@
 
 #define FORMAT_LABEL         "nethalflm"
 #define FORMAT_NAME          "HalfLM C/R DES"
-#define ALGORITHM_NAME       "nethalflm"
+#define ALGORITHM_NAME       "32/" ARCH_BITS_STR
 #define BENCHMARK_COMMENT    ""
 #define BENCHMARK_LENGTH     0
 #define PLAINTEXT_LENGTH     7
@@ -99,7 +99,8 @@ static int nethalflm_valid(char *ciphertext, struct fmt_main *pFmt)
               "00000000000000000000000000000000", 32) == 0)
 	  return 0; // This is NTLM ESS C/R
 
-  for (pos = &ciphertext[28]; atoi16[ARCH_INDEX(*pos)] != 0x7F; pos++);
+  for (pos = &ciphertext[28]; atoi16[ARCH_INDEX(*pos)] != 0x7F; pos++)
+	  ;
     if (!*pos && pos - ciphertext - 28 == CIPHERTEXT_LENGTH) {
 	    return 1;
     }

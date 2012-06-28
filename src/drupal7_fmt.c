@@ -40,20 +40,20 @@
 #endif
 
 #define FORMAT_LABEL			"drupal7"
-#define FORMAT_NAME			"Drupal 7 $S$"
+#define FORMAT_NAME			"Drupal 7 $S$ SHA-512"
 #if ARCH_BITS >= 64
 #define ALGORITHM_NAME			"64/" ARCH_BITS_STR
 #else
 #define ALGORITHM_NAME			"32/" ARCH_BITS_STR
 #endif
 
-#define BENCHMARK_COMMENT		" (SHA-512 x 16385)"
+#define BENCHMARK_COMMENT		" (x16385)"
 #define BENCHMARK_LENGTH		-1
 
 #define PLAINTEXT_LENGTH		63
 #define CIPHERTEXT_LENGTH		55
 
-#define REAL_BINARY_SIZE		(512/8)
+#define DIGEST_SIZE			(512/8)
 
 #define BINARY_SIZE			(258/8) // ((258+7)/8)
 #define SALT_SIZE			8
@@ -77,7 +77,7 @@ static unsigned char *cursalt;
 static unsigned loopCnt;
 static unsigned char (*EncKey)[PLAINTEXT_LENGTH + 1];
 static unsigned int *EncKeyLen;
-static char (*crypt_key)[REAL_BINARY_SIZE];
+static char (*crypt_key)[DIGEST_SIZE];
 
 static void init(struct fmt_main *pFmt)
 {
@@ -163,17 +163,17 @@ static void crypt_all(int count)
 #endif
 	{
 		SHA512_CTX ctx;
-		unsigned char tmp[REAL_BINARY_SIZE + PLAINTEXT_LENGTH];
+		unsigned char tmp[DIGEST_SIZE + PLAINTEXT_LENGTH];
 		int len = EncKeyLen[index];
 		unsigned Lcount = loopCnt - 1;
 
 		SHA512_Init( &ctx );
 		SHA512_Update( &ctx, cursalt, 8 );
 		SHA512_Update( &ctx, EncKey[index], len );
-		memcpy(&tmp[REAL_BINARY_SIZE], (char *)EncKey[index], len);
+		memcpy(&tmp[DIGEST_SIZE], (char *)EncKey[index], len);
 		SHA512_Final( tmp, &ctx);
 
-		len += REAL_BINARY_SIZE;
+		len += DIGEST_SIZE;
 
 		do {
 			SHA512_Init( &ctx );

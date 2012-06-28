@@ -19,9 +19,9 @@
 #include "common-opencl.h"
 
 #define FORMAT_LABEL			"raw-sha1-opencl"
-#define FORMAT_NAME			"Raw SHA-1"
+#define FORMAT_NAME			"Raw SHA-1 OpenCL"
 #define ALGORITHM_NAME			"OpenCL"
-#define SHA_TYPE                        "SHA-1"
+
 #define BENCHMARK_COMMENT		""
 #define BENCHMARK_LENGTH		-1
 
@@ -31,7 +31,7 @@
 #define BINARY_SIZE			20
 #define SALT_SIZE			0
 
-#define SHA_NUM_KEYS               	1024*2048*2
+#define SHA_NUM_KEYS               	1024*2048
 
 #define MIN_KEYS_PER_CRYPT		2048
 #define MAX_KEYS_PER_CRYPT		SHA_NUM_KEYS
@@ -78,7 +78,7 @@ static void find_best_workgroup(void){
 
 	clGetDeviceInfo(devices[gpu_id],CL_DEVICE_MAX_WORK_GROUP_SIZE,sizeof(max_group_size),&max_group_size,NULL );
 	queue_prof = clCreateCommandQueue( context[gpu_id], devices[gpu_id], CL_QUEUE_PROFILING_ENABLE, &ret_code);
-	printf("Max Group Work Size %d ",(int)max_group_size);
+	printf("Max local work size %d ",(int)max_group_size);
 	local_work_size = 1;
 
 	// Set keys

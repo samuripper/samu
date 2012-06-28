@@ -1,8 +1,29 @@
 /* Mozilla cracker patch for JtR. Hacked together during March of 2012 by
  * Dhiru Kholia <dhiru.kholia at gmail.com>
  *
+ * This software is Copyright © 2012, Dhiru Kholia <dhiru.kholia at gmail.com>
+ * and it is hereby released under GPL license.
+ *
  * Uses code from FireMasterLinux project.
- * (http://code.google.com/p/rainbowsandpwnies/wiki/FiremasterLinux) */
+ * (http://code.google.com/p/rainbowsandpwnies/wiki/FiremasterLinux)
+ * Team Members: broseidon, endeavormac, oldgregg, MustardBedroomWrench
+ *
+ * FireMaster :  Firefox Master Password Recovery Tool
+ * Copyright (C) 2006  Nagareshwar Y Talekar ( tnagareshwar at gmail.com )
+ *
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License
+ * as published by the Free Software Foundation; either version 2
+ * of the License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA. */
 
 #ifdef HAVE_NSS
 #include <string.h>
@@ -23,7 +44,7 @@
 #endif
 
 #define FORMAT_LABEL		"mozilla"
-#define FORMAT_NAME		"Mozilla"
+#define FORMAT_NAME		"Mozilla SHA-1 3DES"
 #define ALGORITHM_NAME		"32/" ARCH_BITS_STR
 #define BENCHMARK_COMMENT	""
 #define BENCHMARK_LENGTH	0
@@ -100,11 +121,12 @@ static int valid(char *ciphertext, struct fmt_main *pFmt)
 static void *get_salt(char *ciphertext)
 {
 	int i;
+	char *p;
 	char *ctcopy = strdup(ciphertext);
 	char *keeptr = ctcopy;
 	ctcopy += 9;	/* skip over "$vnc$*" */
 	salt_struct = mem_alloc_tiny(sizeof(struct custom_salt), MEM_ALIGN_WORD);
-	char *p = strtok(ctcopy, "*");
+	p = strtok(ctcopy, "*");
 	salt_struct->keyCrackData.version = atoi(p);
 	p = strtok(NULL, "*");
 	salt_struct->keyCrackData.saltLen = atoi(p);
@@ -172,10 +194,11 @@ static void crypt_all(int count)
 		unsigned char data1[256];
 		unsigned char data2[512];
 		SECItem secPreHash;
+		SECItem pkcs5_pfxpbe;
+
 		secPreHash.data = data1;
 		memcpy(secPreHash.data + SHA1_LENGTH, salt_struct->saltItem.data, salt_struct->saltItem.len);
 		secPreHash.len = salt_struct->saltItem.len + SHA1_LENGTH;
-		SECItem pkcs5_pfxpbe;
 		pkcs5_pfxpbe.data = data2;
 		cracked[index] = CheckMasterPassword(saved_key[index],
 		                                     &pkcs5_pfxpbe,

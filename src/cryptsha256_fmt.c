@@ -26,9 +26,9 @@
 #include <omp.h>
 #endif
 
-#define FORMAT_LABEL			"cryptsha256"
-#define FORMAT_NAME			"crypt SHA-256"
-#define ALGORITHM_NAME			"OpenSSL 32/" ARCH_BITS_STR
+#define FORMAT_LABEL			"sha256crypt"
+#define FORMAT_NAME			"sha256crypt"
+#define ALGORITHM_NAME			"32/" ARCH_BITS_STR
 
 #define BENCHMARK_COMMENT		" (rounds=5000)"
 #define BENCHMARK_LENGTH		-1
@@ -192,11 +192,12 @@ static void crypt_all(int count)
 	for (index = 0; index < count; index++)
 #endif
 	{
-		unsigned char temp_result[BINARY_SIZE]
-#if !defined(_MSC_VER)
-			__attribute__ ((__aligned__ (__alignof__ (ARCH_WORD_32))))
-#endif
-				;
+		// portably align temp_result char * pointer to 32 bits.
+		union xx {
+			unsigned char c[BINARY_SIZE];
+			ARCH_WORD_32 a[BINARY_SIZE/sizeof(ARCH_WORD_32)];
+		} u;
+		unsigned char *temp_result = u.c;
 		SHA256_CTX ctx;
 		SHA256_CTX alt_ctx;
 		size_t cnt;

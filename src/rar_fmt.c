@@ -90,7 +90,7 @@
 #include "config.h"
 
 #define FORMAT_LABEL		"rar"
-#define FORMAT_NAME		"RAR3"
+#define FORMAT_NAME		"RAR3 SHA-1 AES"
 #ifdef CL_VERSION_1_0
 #define ALGORITHM_NAME		"OpenCL"
 #else
@@ -679,6 +679,12 @@ static void init(struct fmt_main *pFmt)
 	SSL_library_init();
 	OpenSSL_add_all_algorithms();
 	atexit(openssl_cleanup);
+
+	/* CRC-32 table init, do it before we start multithreading */
+	{
+		CRC32_t crc;
+		CRC32_Init(&crc);
+	}
 }
 
 static int valid(char *ciphertext, struct fmt_main *pFmt)
@@ -882,7 +888,7 @@ static void crypt_all(int count)
 			outlen = 0;
 
 			EVP_DecryptUpdate(&aes_ctx, plain, &outlen, cur_file->saved_ct, inlen);
-			EVP_DecryptFinal_ex(&aes_ctx, cur_file->saved_ct + outlen, &outlen);
+			EVP_DecryptFinal_ex(&aes_ctx, &plain[outlen], &outlen);
 
 			cracked[index] = !memcmp(plain, "\xc4\x3d\x7b\x00\x40\x07\x00", 7);
 

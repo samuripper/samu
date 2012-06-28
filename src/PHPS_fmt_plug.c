@@ -17,7 +17,7 @@
  *    my $a =  substr $fields[5], 0, 1;
  *    my $b =  substr $fields[5], 1, 1;
  *    my $c =  substr $fields[5], 2, 1;
- *    printf "%s:\$IPB2\$%02x%02x%02x\$%s\n", $fields[1], ord($a), ord($b), ord($c), $fields[4];
+ *    printf "%s:\$PHPS\$%02x%02x%02x\$%s\n", $fields[1], ord($a), ord($b), ord($c), $fields[4];
  * }
  *
  * BUGS: Can't handle usernames with ':' in them.
@@ -38,7 +38,7 @@
 #include "options.h"
 
 #define FORMAT_LABEL		"phps"
-#define FORMAT_NAME			"PHPS -- md5(md5($pass).$salt)"
+#define FORMAT_NAME		"PHPS md5(md5($pass).$salt)"
 
 #define ALGORITHM_NAME		"?" /* filled in by md5-gen */
 #define BENCHMARK_COMMENT	""
@@ -60,6 +60,7 @@
 
 static struct fmt_tests phps_tests[] = {
 	{"$PHPS$433925$5d756853cd63acee76e6dcd6d3728447", "welcome"},
+	{"$PHPS$73616c$aba22b2ceb7c841473c03962b145feb3", "password"},
 	{NULL}
 };
 
@@ -68,6 +69,7 @@ extern struct options_main options;
 static char Conv_Buf[80];
 static struct fmt_main *pFmt_Dynamic_6;
 static void phps_init(struct fmt_main *pFmt);
+static void get_ptr();
 
 /* this function converts a 'native' phps signature string into a $dynamic_6$ syntax string */
 static char *Convert(char *Buf, char *ciphertext)
@@ -104,8 +106,7 @@ static char *our_split(char *ciphertext, int index)
 static char *our_prepare(char *split_fields[10], struct fmt_main *pFmt)
 {
 	int i = strlen(split_fields[1]);
-	if (!pFmt_Dynamic_6)
-		phps_init(pFmt);
+	get_ptr();
 	/* this 'special' code added to do a 'DEEP' test of hashes which have lost their salts */
 	/* in this type run, we load the passwords, then run EVERY salt against them, as though*/
 	/* all of the hashes were available for ALL salts. We also only want 1 salt            */
@@ -126,9 +127,7 @@ static int phps_valid(char *ciphertext, struct fmt_main *pFmt)
 	if (!ciphertext ) // || strlen(ciphertext) < CIPHERTEXT_LENGTH)
 		return 0;
 
-	if (!pFmt_Dynamic_6)
-		phps_init(pFmt);
-
+	get_ptr();
 	i = strlen(ciphertext);
 	/* this 'special' code added to do a 'DEEP' test of hashes which have lost their salts */
 	/* in this type run, we load the passwords, then run EVERY salt against them, as though*/
@@ -158,14 +157,13 @@ static int phps_valid(char *ciphertext, struct fmt_main *pFmt)
 		if (atoi16[ARCH_INDEX(ciphertext[i+6+1+SALT_SIZE*2])] == 0x7F)
 			return 0;
 
-	if (!pFmt_Dynamic_6)
-		phps_init(pFmt);
 	return pFmt_Dynamic_6->methods.valid(Convert(Conv_Buf, ciphertext), pFmt_Dynamic_6);
 }
 
 
 static void * our_salt(char *ciphertext)
 {
+	get_ptr();
 	return pFmt_Dynamic_6->methods.salt(Convert(Conv_Buf, ciphertext));
 }
 static void * our_binary(char *ciphertext)
@@ -190,17 +188,26 @@ struct fmt_main fmt_PHPS =
 	}
 };
 
-
 static void phps_init(struct fmt_main *pFmt)
 {
 	if (pFmt->private.initialized == 0) {
-		pFmt_Dynamic_6 = dynamic_THIN_FORMAT_LINK(&fmt_PHPS, Convert(Conv_Buf, phps_tests[0].ciphertext), "phps");
+		pFmt_Dynamic_6 = dynamic_THIN_FORMAT_LINK(&fmt_PHPS, Convert(Conv_Buf, phps_tests[0].ciphertext), "phps", 1);
 		fmt_PHPS.methods.salt   = our_salt;
 		fmt_PHPS.methods.binary = our_binary;
 		fmt_PHPS.methods.split = our_split;
 		fmt_PHPS.methods.prepare = our_prepare;
 		fmt_PHPS.params.algorithm_name = pFmt_Dynamic_6->params.algorithm_name;
 		pFmt->private.initialized = 1;
+	}
+}
+
+static void get_ptr() {
+	if (!pFmt_Dynamic_6) {
+		pFmt_Dynamic_6 = dynamic_THIN_FORMAT_LINK(&fmt_PHPS, Convert(Conv_Buf, phps_tests[0].ciphertext), "phps", 0);
+		fmt_PHPS.methods.salt   = our_salt;
+		fmt_PHPS.methods.binary = our_binary;
+		fmt_PHPS.methods.split = our_split;
+		fmt_PHPS.methods.prepare = our_prepare;
 	}
 }
 

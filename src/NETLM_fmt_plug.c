@@ -51,7 +51,7 @@
 
 #define FORMAT_LABEL         "netlm"
 #define FORMAT_NAME          "LM C/R DES"
-#define ALGORITHM_NAME       "netlm"
+#define ALGORITHM_NAME       "32/" ARCH_BITS_STR
 #define BENCHMARK_COMMENT    ""
 #define BENCHMARK_LENGTH     0
 #define PLAINTEXT_LENGTH     14
@@ -119,7 +119,8 @@ static int netlm_valid(char *ciphertext, struct fmt_main *pFmt)
               "00000000000000000000000000000000", 32) == 0)
 	  return 0; // This is NTLM ESS C/R
 
-  for (pos = &ciphertext[24]; atoi16[ARCH_INDEX(*pos)] != 0x7F; pos++);
+  for (pos = &ciphertext[24]; atoi16[ARCH_INDEX(*pos)] != 0x7F; pos++)
+	  ;
     if (!*pos && pos - ciphertext - 24 == CIPHERTEXT_LENGTH)
       return 1;
     else

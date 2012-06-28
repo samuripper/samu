@@ -19,7 +19,7 @@
 /*
  * John's version number.
  */
-#define JOHN_VERSION			"1.7.9-jumbo-5+unstable"
+#define JOHN_VERSION			"1.7.9-jumbo-6-RC0"
 
 /*
  * Notes to packagers of John for *BSD "ports", Linux distributions, etc.:
@@ -333,8 +333,7 @@ extern int password_hash_thresholds[PASSWORD_HASH_SIZES];
 #define MAX_MKV_LVL 400
 #define MAX_MKV_LEN 30
 
-/* Default maximum size of wordlist memory buffer.
-   We shift it according to --save-memory */
-#define WORDLIST_BUFFER_DEFAULT		0x5000000
+/* Default maximum size of wordlist memory buffer. */
+#define WORDLIST_BUFFER_DEFAULT		5000000
 
 #endif

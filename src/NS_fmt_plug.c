@@ -40,7 +40,7 @@
 
 #define FORMAT_LABEL			"md5ns"
 #define FORMAT_NAME			"Netscreen MD5"
-#define NS_ALGORITHM_NAME               "NS MD5"
+#define ALGORITHM_NAME			"32/" ARCH_BITS_STR
 
 #define BENCHMARK_COMMENT		""
 #define BENCHMARK_LENGTH		-1
@@ -113,7 +113,7 @@ static int NS_valid(char *ciphertext, struct fmt_main *pFmt)
 
 static ARCH_WORD_32 *NS_std_get_binary(char *ciphertext)
 {
-	static unsigned long out_[16/sizeof(unsigned long)];
+	static unsigned long out_[BINARY_SIZE/sizeof(unsigned long)];
 	ARCH_WORD_32 *out = (ARCH_WORD_32*)out_;
 	char unscrambled[24];
 	int i;
@@ -264,7 +264,7 @@ struct fmt_main fmt_NS = {
 	{
 		FORMAT_LABEL,
 		FORMAT_NAME,
-		NS_ALGORITHM_NAME,
+		ALGORITHM_NAME,
 		BENCHMARK_COMMENT,
 		BENCHMARK_LENGTH,
 		PLAINTEXT_LENGTH,

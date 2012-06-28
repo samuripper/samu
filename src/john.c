@@ -124,6 +124,10 @@ extern struct fmt_main fmt_cryptsha512;
 extern struct fmt_main fmt_django;
 #endif
 
+#if defined(__GNUC__) && defined(__SSE2__)
+extern struct fmt_main sha1_fmt_ng;
+#endif
+
 #ifdef HAVE_SKEY
 extern struct fmt_main fmt_SKEY;
 #endif
@@ -132,6 +136,7 @@ extern struct fmt_main fmt_SKEY;
 extern struct fmt_main mozilla_fmt;
 extern int mozilla2john(int argc, char **argv);
 #endif
+extern int hccap2john(int argc, char **argv);
 
 #ifdef CL_VERSION_1_0
 extern struct fmt_main fmt_opencl_NSLDAPS;
@@ -168,6 +173,7 @@ extern struct fmt_main fmt_ssh;
 extern struct fmt_main fmt_pdf;
 extern struct fmt_main rar_fmt;
 extern struct fmt_main zip_fmt;
+extern struct fmt_main fmt_wpapsk;
 
 #include "fmt_externs.h"
 
@@ -181,6 +187,7 @@ extern int unafs(int argc, char **argv);
 extern int undrop(int argc, char **argv);
 #ifndef _MSC_VER
 extern int ssh2john(int argc, char **argv);
+extern int keepass2john(int argc, char **argv);
 extern int pdf2john(int argc, char **argv);
 extern int rar2john(int argc, char **argv);
 extern int racf2john(int argc, char **argv);
@@ -257,6 +264,10 @@ static void john_register_all(void)
 	john_register_one(&fmt_django);
 #endif
 
+#if defined(__GNUC__) && defined(__SSE2__)
+	john_register_one(&sha1_fmt_ng);
+#endif
+
 #ifdef HAVE_NSS
 	john_register_one(&mozilla_fmt);
 #endif
@@ -271,6 +282,7 @@ static void john_register_all(void)
 
 	john_register_one(&fmt_ssh);
 	john_register_one(&fmt_pdf);
+	john_register_one(&fmt_wpapsk);
 #ifndef _MSC_VER
 	john_register_one(&rar_fmt);
 #endif
@@ -444,6 +456,7 @@ static void john_load(void)
 			options.loader.flags &= ~DB_LOGIN;
 			options.loader.max_wordfile_memory = 0;
 		}
+
 		ldr_init_database(&database, &options.loader);
 
 		if ((current = options.passwd->head))
@@ -560,7 +573,8 @@ static void john_init(char *name, int argc, char **argv)
 	if (options.listconf && !strcasecmp(options.listconf, "?"))
 	{
 		puts("subformats, inc-modes, rules, externals, ext-filters, ext-filters-only,");
-		puts("ext-modes, build-info, hidden-options, encodings, formats,");
+		puts("ext-modes, build-info, hidden-options, encodings, formats, format-details,");
+		printf("format-all-details, ");
 #ifdef CL_VERSION_1_0
 		printf("opencl-devices, ");
 #endif
@@ -577,6 +591,10 @@ static void john_init(char *name, int argc, char **argv)
 	{
 		puts("--subformat=FORMAT        pick a benchmark format for --format=crypt");
 		puts("--mkpc=N                  force a lower max. keys per crypt");
+		puts("--length=N                force a lower max. length");
+		puts("--field-separator-char=C  use 'C' instead of the ':' in input and pot files");
+		puts("--fix-state-delay=N       performance tweak, see documentation");
+		puts("--log-stderr              log to screen instead of file\n");
 		exit(0);
 	}
 
@@ -614,6 +632,9 @@ static void john_init(char *name, int argc, char **argv)
 			printf("CHARSET_MAX: %d (0x%02x)\n", CHARSET_MAX,
 			       CHARSET_MAX);
 			printf("CHARSET_LENGTH: %d\n", CHARSET_LENGTH);
+#ifdef __VERSION__
+		printf("Compiler version: %s\n", __VERSION__);
+#endif
 #ifdef __GNUC__
 			printf("gcc version: %d.%d.%d\n", __GNUC__,
 			       __GNUC_MINOR__, __GNUC_PATCHLEVEL__);
@@ -621,10 +642,13 @@ static void john_init(char *name, int argc, char **argv)
 #ifdef __ICC
 			printf("icc version: %d\n", __ICC);
 #endif
+#ifdef __clang_version__
+			printf("clang version: %s\n", __clang_version__);
+#endif
 			exit(0);
 		}
 
-		if (options.flags & FLG_CONFIG_CLI)
+		if (options.config)
 		{
 			path_init_ex(options.config);
 			cfg_init(options.config, 1);
@@ -662,32 +686,32 @@ static void john_init(char *name, int argc, char **argv)
 
 	if (options.listconf && !strcasecmp(options.listconf, "inc-modes"))
 	{
-		cfg_print_subsections("Incremental", NULL, NULL);
+		cfg_print_subsections("Incremental", NULL, NULL, 0);
 		exit(0);
 	}
 	if (options.listconf && !strcasecmp(options.listconf, "rules"))
 	{
-		cfg_print_subsections("List.Rules", NULL, NULL);
+		cfg_print_subsections("List.Rules", NULL, NULL, 0);
 		exit(0);
 	}
 	if (options.listconf && !strcasecmp(options.listconf, "externals"))
 	{
-		cfg_print_subsections("List.External", NULL, NULL);
+		cfg_print_subsections("List.External", NULL, NULL, 0);
 		exit(0);
 	}
 	if (options.listconf && !strcasecmp(options.listconf, "ext-filters"))
 	{
-		cfg_print_subsections("List.External", "filter", NULL);
+		cfg_print_subsections("List.External", "filter", NULL, 0);
 		exit(0);
 	}
 	if (options.listconf && !strcasecmp(options.listconf, "ext-filters-only"))
 	{
-		cfg_print_subsections("List.External", "filter", "generate");
+		cfg_print_subsections("List.External", "filter", "generate", 0);
 		exit(0);
 	}
 	if (options.listconf && !strcasecmp(options.listconf, "ext-modes"))
 	{
-		cfg_print_subsections("List.External", "generate", NULL);
+		cfg_print_subsections("List.External", "generate", NULL, 0);
 		exit(0);
 	}
 	if (options.listconf && !strcasecmp(options.listconf, "encodings"))
@@ -753,12 +777,82 @@ static void john_init(char *name, int argc, char **argv)
 		free(formats_list);
 		exit(0);
 	}
+	if (options.listconf &&
+	    !strcasecmp(options.listconf, "format-details")) {
+		struct fmt_main *format;
+		format = fmt_list;
+		do {
+			int ntests = 0;
+
+			if(format->params.tests) {
+				while (format->params.tests[ntests++].ciphertext);
+				ntests--;
+			}
+			printf("%s\t%d\t%d\t%d\t%08x\t%d\t%s\t%s\t%s\t%d\t%d\t%d\n",
+			       format->params.label,
+			       format->params.plaintext_length,
+			       format->params.min_keys_per_crypt,
+			       format->params.max_keys_per_crypt,
+			       format->params.flags,
+			       ntests,
+			       format->params.algorithm_name,
+			       format->params.format_name,
+			       format->params.benchmark_comment,
+			       format->params.benchmark_length,
+			       format->params.binary_size,
+			       format->params.salt_size);
+		} while ((format = format->next));
+		exit(0);
+	}
+	if (options.listconf &&
+	    !strcasecmp(options.listconf, "format-all-details")) {
+		struct fmt_main *format;
+		format = fmt_list;
+		do {
+			int ntests = 0;
+
+			if(format->params.tests) {
+				while (format->params.tests[ntests++].ciphertext);
+				ntests--;
+			}
+			/*
+			 * attributes should be printed in the same sequence
+			 * as with format-details, but human-readable
+			 */
+			printf("Format label                    \t%s\n", format->params.label);
+			printf("Max. password length in bytes   \t%d\n", format->params.plaintext_length);
+			printf("Min. keys per crypt             \t%d\n", format->params.min_keys_per_crypt);
+			printf("Max. keys per crypt             \t%d\n", format->params.max_keys_per_crypt);
+			printf("Flags\n");
+			printf(" Case sensitive                 \t%s\n", (format->params.flags & FMT_CASE) ? "yes" : "no");
+			printf(" Supports 8-bit characters      \t%s\n", (format->params.flags & FMT_8_BIT) ? "yes" : "no");
+			printf(" Converts 8859-1 to UTF-16/UCS-2\t%s\n", (format->params.flags & FMT_UNICODE) ? "yes" : "no");
+			printf(" Honours --encoding=NAME        \t%s\n", (format->params.flags & FMT_UTF8) ? "yes" : "no");
+			printf(" False positives possible       \t%s\n", (format->params.flags & FMT_NOT_EXACT) ? "yes" : "no");
+			printf(" Uses a bitslice implementation \t%s\n", (format->params.flags & FMT_BS) ? "yes" : "no");
+			printf(" The split() method unifies case\t%s\n", (format->params.flags & FMT_SPLIT_UNIFIES_CASE) ? "yes" : "no");
+#ifdef _OPENMP
+			printf(" Parallelized with OpenMP       \t%s\n", (format->params.flags & FMT_OMP) ? "yes" : "no");
+#endif
+			printf("Number of test cases for --test \t%d\n", ntests);
+			printf("Algorithm name                  \t%s\n", format->params.algorithm_name);
+			printf("Format name                     \t%s\n", format->params.format_name);
+			printf("Benchmark comment               \t%s\n", format->params.benchmark_comment);
+			printf("Benchmark length                \t%d\n", format->params.benchmark_length);
+			printf("Binary size                     \t%d\n", format->params.binary_size);
+			printf("Salt size                       \t%d\n", format->params.salt_size);
+			printf("\n");
+		} while ((format = format->next));
+		exit(0);
+	}
 	/* --list last resort: list subsections of any john.conf section name */
 	if (options.listconf)
 	{
-		printf("Subsections of [%s]:\n", options.listconf);
-		cfg_print_subsections(options.listconf, NULL, NULL);
-		exit(0);
+		//printf("Subsections of [%s]:\n", options.listconf);
+		if (cfg_print_subsections(options.listconf, NULL, NULL, 1))
+			exit(0);
+		else
+			exit(1);
 	}
 
 	common_init();
@@ -959,6 +1053,11 @@ int main(int argc, char **argv)
 		return ssh2john(argc, argv);
 	}
 
+	if (!strcmp(name, "keepass2john")) {
+		CPU_detect_or_fallback(argv, 0);
+		return keepass2john(argc, argv);
+	}
+
  	if (!strcmp(name, "pdf2john")) {
 		CPU_detect_or_fallback(argv, 0);
 		return pdf2john(argc, argv);
@@ -991,11 +1090,19 @@ int main(int argc, char **argv)
 		CPU_detect_or_fallback(argv, 0);
 		return zip2john(argc, argv);
 	}
+	if (!strcmp(name, "hccap2john")) {
+		CPU_detect_or_fallback(argv, 0);
+		return hccap2john(argc, argv);
+	}
 
 #ifdef HAVE_MPI
 	mpi_setup(argc, argv);
 #endif
 	john_init(name, argc, argv);
+
+	/* --max-run-time disregards load times */
+	timer_abort = options.max_run_time + 1;
+
 	john_run();
 	john_done();
 

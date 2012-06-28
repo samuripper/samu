@@ -217,12 +217,12 @@ static inline const char *potword(const char *line)
 	return p ? p + 1 : line;
 }
 
-static int hash_log, hash_size, hash_mask;
+static unsigned int hash_log, hash_size, hash_mask;
 #define ENTRY_END_HASH	0xFFFFFFFF
 #define ENTRY_END_LIST	0xFFFFFFFE
 
 /* Copied from unique.c (and modified) */
-static unsigned int line_hash(char *line)
+static inline unsigned int line_hash(char *line)
 {
 	unsigned int hash, extra;
 	char *p;
@@ -253,8 +253,8 @@ static unsigned int line_hash(char *line)
 
 	hash ^= hash >> hash_log;
 
-	hash &= hash_mask;
 out:
+	hash &= hash_mask;
 	return hash;
 }
 
@@ -320,7 +320,8 @@ void do_wordlist_crack(struct db_main *db, char *name, int rules)
 #endif
 	char msg_buf[128];
 	int forceLoad = 0;
-	int potfile = 0;
+	int dupeCheck = options.flags & FLG_DUPESUPP;
+	int loopBack = options.flags & FLG_LOOPBACK_CHK;
 
 #ifdef HAVE_MPI
 	char file_line[LINE_BUFFER_SIZE];
@@ -334,40 +335,36 @@ void do_wordlist_crack(struct db_main *db, char *name, int rules)
 
 	length = db->format->params.plaintext_length;
 
-	if (db->options->max_wordfile_memory == 0)
+	if (!mem_saving_level &&
+	    (dupeCheck || !db->options->max_wordfile_memory))
 		forceLoad = 1;
 
-	/* If we did not give a name, we read the default pot file */
-	if (!name && !(options.flags & (FLG_STDIN_CHK | FLG_PIPE_CHK))) {
-		name = options.loader.activepot;
-		potfile = 1;
-		fprintf(stderr, "Closed-loop mode: Reading candidates from %s\n", name);
-		if (!forceLoad && (db->options->max_wordfile_memory ==
-		     (WORDLIST_BUFFER_DEFAULT >> mem_saving_level)))
-			db->options->max_wordfile_memory = 0x40000000 >>
-				mem_saving_level;
+	/* If we did not give a name for loopback mode,
+	   we use the active pot file */
+	if (loopBack) {
+		dupeCheck = 1;
+		if (!name)
+			name = options.loader.activepot;
 	}
+
+	/* If we did not give a name for wordlist mode,
+	   we use the "batch mode" one from john.conf */
+	if (!name && !(options.flags & (FLG_STDIN_CHK | FLG_PIPE_CHK)))
+	if (!(name = cfg_get_param(SECTION_OPTIONS, NULL, "Wordlist")))
+	if (!(name = cfg_get_param(SECTION_OPTIONS, NULL, "Wordfile")))
+		name = WORDLIST_NAME;
 
 	if (name) {
 		char *cp, csearch;
 
+		if (loopBack) {
+			fprintf(stderr, "Loop-back mode: Reading candidates from pot file %s\n", name);
+			log_event("- Using loop-back mode:");
+		}
+
 		if (!(word_file = fopen(path_expand(name), "rb")))
 			pexit("fopen: %s", path_expand(name));
 		log_event("- Wordlist file: %.100s", path_expand(name));
-
-		/* This lets us use a potfile as a wordlist - it will
-		   automatically adopt and just read the password
-		   column - and discard dupes. */
-		if (!potfile && name && strlen(name) > 4 &&
-		    (!strcasecmp(name + strlen(name) - 4, ".pot")))
-		{
-			potfile = 1;
-			fprintf(stderr, "Closed-loop mode: Reading candidates from pot file\n");
-			if (!forceLoad && (db->options->max_wordfile_memory ==
-			     (WORDLIST_BUFFER_DEFAULT >> mem_saving_level)))
-				db->options->max_wordfile_memory = 0x40000000 >>
-					mem_saving_level;
-		}
 
 		/* this will both get us the file length, and tell us
 		   of 'invalid' files (i.e. too big in Win32 or other
@@ -388,11 +385,13 @@ void do_wordlist_crack(struct db_main *db, char *name, int rules)
 			fprintf(stderr, "Error, dictionary file is empty\n");
 			error();
 		}
+		if (file_len < db->options->max_wordfile_memory)
+			forceLoad = 1;
 		/* If the file is < max_wordfile_memory, then we work from a
 		   memory map of the file. But this is disabled if we are also
 		   using an external filter, as a modification of a word could
-		   trash the buffer */
-		if (!(options.flags & FLG_EXTERNAL_CHK))
+		   trash the buffer. It's also disabled by --save-mem=N */
+		if (!(options.flags & FLG_EXTERNAL_CHK) && !mem_saving_level)
 #ifdef HAVE_MPI
 		if ((mpi_p > 1 && file_len > mpi_p * 100 && file_len / mpi_p <
 		     db->options->max_wordfile_memory) ||
@@ -416,7 +415,7 @@ void do_wordlist_crack(struct db_main *db, char *name, int rules)
 					}
 					if (!strncmp(line, "#!comment", 9))
 						continue;
-					if (potfile)
+					if (loopBack)
 						lp = (char*)potword(file_line);
 					else
 						lp = file_line;
@@ -440,7 +439,7 @@ void do_wordlist_crack(struct db_main *db, char *name, int rules)
 					}
 					if (!strncmp(line, "#!comment", 9))
 						continue;
-					if (potfile)
+					if (loopBack)
 						lp = (char*)potword(file_line);
 					else
 						lp = file_line;
@@ -481,7 +480,7 @@ void do_wordlist_crack(struct db_main *db, char *name, int rules)
 			char *aep;
 
 			/* probably should only be debug message, but I left it in */
-			log_event("loading wordfile %s into memory (%lu bytes, max_size=%u)", name, file_len, db->options->max_wordfile_memory);
+			log_event("- loading wordfile %s into memory (%lu bytes, max_size=%u)", name, file_len, db->options->max_wordfile_memory);
 
 			word_file_str = mem_alloc(file_len + LINE_BUFFER_SIZE + 1);
 			if (fread(word_file_str, 1, file_len, word_file) != file_len) {
@@ -500,29 +499,38 @@ void do_wordlist_crack(struct db_main *db, char *name, int rules)
 				csearch = '\r';
 				cp = memchr(word_file_str, csearch, file_len);
 			}
-			for (nWordFileLines = 1; cp; ++nWordFileLines)
+			for (nWordFileLines = 0; cp; ++nWordFileLines)
 				cp = memchr(&cp[1], csearch, file_len - (cp - word_file_str) - 1);
+			if (aep[-1] != csearch)
+				++nWordFileLines;
 			words = mem_alloc( (nWordFileLines+1) * sizeof(char*));
-			log_event("wordfile had %u lines and required %lu bytes for index.", nWordFileLines, (unsigned long)(nWordFileLines * sizeof(char*)));
+			log_event("- wordfile had %u lines and required %lu bytes for index.", nWordFileLines, (unsigned long)(nWordFileLines * sizeof(char*)));
 
 			i = 0;
 			cp = word_file_str;
 
-			hash_log = 8; // minimum 8 unless we modify line_hash()
-			while (((1 << hash_log) < (nWordFileLines>>1)) &&
-			       hash_log < 23)
-				hash_log++;
-			hash_size = (1 << hash_log);
-			hash_mask = (hash_size - 1);
-			log_event("Size %d log 1<<%d mask %08x, %d lines, allocating %zd bytes\n", hash_size, hash_log, hash_mask, nWordFileLines, (hash_size * sizeof(unsigned int)) + (nWordFileLines * sizeof(element_st)));
-			buffer.hash = mem_alloc(hash_size * sizeof(unsigned int));
-			buffer.data = mem_alloc(nWordFileLines * sizeof(element_st));
-			memset(buffer.hash, 0xff, hash_size * sizeof(unsigned int));
-
+			if (dupeCheck) {
+				hash_log = 1;
+				while (((1 << hash_log) < (nWordFileLines))
+				       && hash_log < 27)
+					hash_log++;
+				hash_size = (1 << hash_log);
+				hash_mask = (hash_size - 1);
+				log_event("- dupe suppression: hash size %u, temporarily allocating %zd bytes",
+				          hash_size,
+				          (hash_size * sizeof(unsigned int)) +
+				          (nWordFileLines * sizeof(element_st)));
+				buffer.hash = mem_alloc(hash_size *
+				                        sizeof(unsigned int));
+				buffer.data = mem_alloc(nWordFileLines *
+				                        sizeof(element_st));
+				memset(buffer.hash, 0xff, hash_size *
+				       sizeof(unsigned int));
+			}
 			do
 			{
 				char *ep, ec;
-				if (potfile)
+				if (loopBack)
 					cp = (char*)potword(cp);
 				ep = cp;
 				while ((ep < aep) && *ep && *ep != '\n' && *ep != '\r') ep++;
@@ -532,27 +540,26 @@ void do_wordlist_crack(struct db_main *db, char *name, int rules)
 					if (!rules) {
 						if (ep - cp >= length)
 							cp[length] = 0;
-						if (wbuf_unique(cp)) {
-							words[i++] = cp;
-							if (i == nWordFileLines)
-								break;
-						}
-					} else {
+					} else
 						if (ep - cp >= LINE_BUFFER_SIZE)
 							cp[LINE_BUFFER_SIZE-1] = 0;
-						if (wbuf_unique(cp)) {
+					if (dupeCheck) {
+						/* Full suppression of dupes
+						   after truncation */
+						if (wbuf_unique(cp))
 							words[i++] = cp;
-							if (i == nWordFileLines)
-								break;
-						}
+					} else {
+						/* Just suppress consecutive
+						   candidates */
+						if (!i || strcmp(cp, words[i-1]))
+							words[i++] = cp;
 					}
-				} else
-					nWordFileLines--;
+				}
 				cp = ep + 1;
 				if (ec == '\r' && *cp == '\n') cp++;
 			} while (cp < aep);
 			if (nWordFileLines - i)
-				fprintf(stderr, "Suppressed %u duplicate lines.\n", nWordFileLines - i);
+				log_event("- suppressed %u duplicate lines and/or comments from wordlist.", nWordFileLines - i);
 			free(buffer.hash);
 			free(buffer.data);
 			nWordFileLines = i;
@@ -792,7 +799,7 @@ SKIP_MEM_MAP_LOAD:;
 						goto EndOfFile;
 				} while (!strncmp(line, "#!comment", 9));
 
-				if (potfile)
+				if (loopBack)
 					memmove((char*)line, potword(line), strlen(potword(line)) + 1);
 
 				if (!rules)

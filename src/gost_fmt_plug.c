@@ -30,16 +30,19 @@
 #endif
 
 #define FORMAT_LABEL		"gost"
-#define FORMAT_NAME		"GOST 3411"
-#define FORMAT_LABEL_CP		"gost-cp"
-#define FORMAT_NAME_CP		"GOST 3411 CryptoPro"
+#define FORMAT_NAME		"GOST R 34.11-94"
 
 #define FORMAT_TAG		"$gost$"
 #define TAG_LENGTH		6
 #define FORMAT_TAG_CP		"$gost-cp$"
 #define TAG_CP_LENGTH		9
 
+#if !defined(USE_GCC_ASM_IA32) && defined(USE_GCC_ASM_X64)
+#define ALGORITHM_NAME		"64/64"
+#else
 #define ALGORITHM_NAME		"32/" ARCH_BITS_STR
+#endif
+
 #define BENCHMARK_COMMENT	""
 #define BENCHMARK_LENGTH	-1
 #define PLAINTEXT_LENGTH	64

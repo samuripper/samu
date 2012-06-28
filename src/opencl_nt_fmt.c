@@ -121,7 +121,7 @@ static int have_full_hashes;
 
 static int max_keys_per_crypt = NT_NUM_KEYS;
 
-#define ALGORITHM_NAME		"OpenCL 1.0"
+#define ALGORITHM_NAME		"OpenCL"
 #define NT_CRYPT_FUN		nt_crypt_all_opencl
 
 static void release_all(void)
@@ -172,7 +172,7 @@ static void find_best_workgroup(size_t max_group_size) {
 			local_work_size = my_work_group;
 		}
 	}
-	printf("Optimal Local work size %d\n",(int)local_work_size);
+	printf("Optimal local work size %d\n",(int)local_work_size);
 	//printf("(to avoid this test on next run do export LWS=%d)\n",(int)local_work_size);
 	clReleaseCommandQueue(queue_prof);
 }

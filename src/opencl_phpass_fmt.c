@@ -15,9 +15,12 @@
 #define uint32_t		unsigned int
 #define uint8_t			unsigned char
 
-#define PHPASS_TYPE		"PORTABLE-MD5"
+#define FORMAT_LABEL		"phpass-opencl"
+#define FORMAT_NAME		"phpass MD5"
 
-#define BENCHMARK_COMMENT	""
+#define ALGORITHM_NAME		"OpenCL"
+
+#define BENCHMARK_COMMENT	" ($P$9 length 8)"
 #define BENCHMARK_LENGTH	-1
 
 #define PLAINTEXT_LENGTH	15
@@ -25,12 +28,10 @@
 #define BINARY_SIZE		16
 #define SALT_SIZE		8
 
-#define KEYS_PER_CRYPT		1024*9*4
+#define KEYS_PER_CRYPT		1024*9
 #define MIN_KEYS_PER_CRYPT	KEYS_PER_CRYPT
 #define MAX_KEYS_PER_CRYPT	KEYS_PER_CRYPT
-#define FORMAT_LABEL		"phpass-opencl"
-#define FORMAT_NAME		"PHPASS"
-#define ALGORITHM_NAME		"OpenCL"
+
 
 //#define _PHPASS_DEBUG
 
@@ -57,7 +58,7 @@ static cl_mem mem_in, mem_out, mem_setting;
 static size_t insize = sizeof(phpass_password) * KEYS_PER_CRYPT;
 static size_t outsize = sizeof(phpass_hash) * KEYS_PER_CRYPT;
 static size_t settingsize = sizeof(uint8_t) * SALT_SIZE + 4;
-static size_t global_work_size = KEYS_PER_CRYPT/4;
+static size_t global_work_size = KEYS_PER_CRYPT;
 
 
 static struct fmt_tests tests[] = {
@@ -167,10 +168,14 @@ static int valid(char *ciphertext, struct fmt_main *pFmt)
 {
 	uint32_t i, j, count_log2, found;
 
+	int prefix=0;
 	if (strlen(ciphertext) != CIPHERTEXT_LENGTH)
 		return 0;
-	if (strncmp(ciphertext, phpass_prefix, 3) != 0)
-		return 0;
+	if (strncmp(ciphertext, "$P$", 3) == 0)
+		prefix=1;
+	if (strncmp(ciphertext, "$H$", 3) == 0)
+		prefix=1;
+	if(prefix==0) return 0;
 
 	for (i = 3; i < CIPHERTEXT_LENGTH; i++) {
 		found = 0;
@@ -252,7 +257,7 @@ static void crypt_all(int count)
 
 	/// Run kernel
 	HANDLE_CLERROR(clEnqueueNDRangeKernel(queue[gpu_id], crypt_kernel, 1,
-		NULL, &global_work_size, &local_work_size, 0, NULL, &profilingEvent),
+		NULL, &global_work_size, &local_work_size, 0, NULL, NULL),
 	    "Run kernel");
 	HANDLE_CLERROR(clFinish(queue[gpu_id]), "clFinish");
 
@@ -394,7 +399,7 @@ struct fmt_main fmt_opencl_phpass = {
 	{
 		    FORMAT_LABEL,
 		    FORMAT_NAME,
-		    PHPASS_TYPE,
+		    ALGORITHM_NAME,
 		    BENCHMARK_COMMENT,
 		    BENCHMARK_LENGTH,
 		    PLAINTEXT_LENGTH,

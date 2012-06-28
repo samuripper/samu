@@ -37,11 +37,11 @@
 #include "formats.h"
 #include "dynamic.h"
 
-#define FORMAT_LABEL			"phpass-md5"
-#define FORMAT_NAME				"PHPass MD5"
+#define FORMAT_LABEL			"phpass"
+#define FORMAT_NAME			"phpass MD5"
 
 #define ALGORITHM_NAME			"?" /* filled in by md5-gen */
-#define BENCHMARK_COMMENT		""
+#define BENCHMARK_COMMENT		" ($P$9)"
 #define BENCHMARK_LENGTH		-1
 
 #define PLAINTEXT_LENGTH		38
@@ -51,26 +51,31 @@
 #define SALT_SIZE				8
 
 static struct fmt_tests phpassmd5_tests[] = {
-		{"$H$9aaaaaSXBjgypwqm.JsMssPLiS8YQ00", "test1"},
-		{"$H$9PE8jEklgZhgLmZl5.HYJAzfGCQtzi1", "123456"},
-		{"$H$9pdx7dbOW3Nnt32sikrjAxYFjX8XoK1", "123456"},
-		{"$P$912345678LIjjb6PhecupozNBmDndU0", "thisisalongertestPW"},
-		{"$H$9A5she.OeEiU583vYsRXZ5m2XIpI68/", "123456"},
-		{"$P$917UOZtDi6ksoFt.y2wUYvgUI6ZXIK/", "test1"},
-		{"$P$91234567AQwVI09JXzrV1hEC6MSQ8I0", "thisisalongertest"},
-		{"$P$9234560A8hN6sXs5ir0NfozijdqT6f0", "test2"},
-		{"$P$9234560A86ySwM77n2VA/Ey35fwkfP0", "test3"},
-		{"$P$9234560A8RZBZDBzO5ygETHXeUZX5b1", "test4"},
-		{"$P$612345678si5M0DDyPpmRCmcltU/YW/", "JohnRipper"}, // note smaller loop count
-		{"$H$712345678WhEyvy1YWzT4647jzeOmo0", "JohnRipper"}, // note smaller loop count (phpbb w/older PHP version)
-		{"$P$B12345678L6Lpt4BxNotVIMILOa9u81", "JohnRipper"}, // note larber loop count  (Wordpress)
-		{"$P$91234567xogA.H64Lkk8Cx8vlWBVzH0", "thisisalongertst"},
-		{NULL}
+	{"$H$9aaaaaSXBjgypwqm.JsMssPLiS8YQ00", "test1"},
+	{"$H$9PE8jEklgZhgLmZl5.HYJAzfGCQtzi1", "123456"},
+	{"$H$9pdx7dbOW3Nnt32sikrjAxYFjX8XoK1", "123456"},
+	{"$P$912345678LIjjb6PhecupozNBmDndU0", "thisisalongertestPW"},
+	{"$H$9A5she.OeEiU583vYsRXZ5m2XIpI68/", "123456"},
+	{"$P$917UOZtDi6ksoFt.y2wUYvgUI6ZXIK/", "test1"},
+	{"$P$91234567AQwVI09JXzrV1hEC6MSQ8I0", "thisisalongertest"},
+	{"$P$9234560A8hN6sXs5ir0NfozijdqT6f0", "test2"},
+	{"$P$9234560A86ySwM77n2VA/Ey35fwkfP0", "test3"},
+	{"$P$9234560A8RZBZDBzO5ygETHXeUZX5b1", "test4"},
+	{"$P$612345678si5M0DDyPpmRCmcltU/YW/", "JohnRipper"}, // 256
+	{"$P$6T4Krr44HLrUqGkL8Lu67lzZVbvHLC1", "test12345"}, // 256
+	{"$H$712345678WhEyvy1YWzT4647jzeOmo0", "JohnRipper"}, // 512 (phpBB w/older PHP version)
+	{"$P$8DkV/nqeaQNTdp4NvWjCkgN48AK69X.", "test12345"}, // 1024
+	{"$P$B12345678L6Lpt4BxNotVIMILOa9u81", "JohnRipper"}, // 8192 (WordPress)
+	{"$P$91234567xogA.H64Lkk8Cx8vlWBVzH0", "thisisalongertst"},
+	{NULL}
 };
+
+/* (256+256+512+1024+8192)/5 = 2048 */
 
 static char Conv_Buf[80];
 static struct fmt_main *pFmt_Dynamic_17;
 static void phpassmd5_init(struct fmt_main *pFmt);
+static void get_ptr();
 
 /* this function converts a 'native' phpass signature string into a $dynamic_17$ syntax string */
 static char *Convert(char *Buf, char *ciphertext)
@@ -94,10 +99,7 @@ static int phpassmd5_valid(char *ciphertext, struct fmt_main *pFmt)
 
 		if (!ciphertext || strlen(ciphertext) < CIPHERTEXT_LENGTH)
 				return 0;
-
-		if (!pFmt_Dynamic_17)
-			phpassmd5_init(pFmt);
-
+		get_ptr();
 		if (strlen(ciphertext) != CIPHERTEXT_LENGTH) {
 			return pFmt_Dynamic_17->methods.valid(ciphertext, pFmt_Dynamic_17);
 		}
@@ -118,6 +120,7 @@ static int phpassmd5_valid(char *ciphertext, struct fmt_main *pFmt)
 
 static void * our_salt(char *ciphertext)
 {
+	get_ptr();
 	return pFmt_Dynamic_17->methods.salt(Convert(Conv_Buf, ciphertext));
 }
 static void * our_binary(char *ciphertext)
@@ -145,11 +148,20 @@ struct fmt_main fmt_phpassmd5 =
 static void phpassmd5_init(struct fmt_main *pFmt)
 {
 	if (pFmt->private.initialized == 0) {
-		pFmt_Dynamic_17 = dynamic_THIN_FORMAT_LINK(&fmt_phpassmd5, Convert(Conv_Buf, phpassmd5_tests[0].ciphertext), "phpass");
+		pFmt_Dynamic_17 = dynamic_THIN_FORMAT_LINK(&fmt_phpassmd5, Convert(Conv_Buf, phpassmd5_tests[0].ciphertext), "phpass", 1);
 		fmt_phpassmd5.methods.salt   = our_salt;
 		fmt_phpassmd5.methods.binary = our_binary;
 		fmt_phpassmd5.methods.split = our_split;
 		fmt_phpassmd5.params.algorithm_name = pFmt_Dynamic_17->params.algorithm_name;
 		pFmt->private.initialized = 1;
+	}
+}
+
+static void get_ptr() {
+	if (!pFmt_Dynamic_17) {
+		pFmt_Dynamic_17 = dynamic_THIN_FORMAT_LINK(&fmt_phpassmd5, Convert(Conv_Buf, phpassmd5_tests[0].ciphertext), "phpass", 0);
+		fmt_phpassmd5.methods.salt   = our_salt;
+		fmt_phpassmd5.methods.binary = our_binary;
+		fmt_phpassmd5.methods.split = our_split;
 	}
 }

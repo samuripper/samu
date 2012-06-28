@@ -254,31 +254,39 @@ static void __SSE_gen_BenchLowLevelFunctions();
 #define BSD_BLKS 1
 #endif
 
+#include "sse-intrinsics.h"
 #if (MMX_COEF == 2)
 #define BLOCK_LOOPS			64
-#define ALGORITHM_NAME		"MMX 64x2"
-#else // MMX_COEF != 2
+#define ALGORITHM_NAME			"64/64 " SSE_type " 64x2"
+#elif MMX_COEF == 4
 #define BLOCK_LOOPS			32
 #ifdef MD5_SSE_PARA
-#include "sse-intrinsics.h"
 #if (MD5_SSE_PARA==1)
-#define ALGORITHM_NAME		"SSE2i 32x4x1"
+#define ALGORITHM_NAME			"128/128 " SSE_type " 32x4x1"
 #elif (MD5_SSE_PARA==2)
-#define ALGORITHM_NAME		"SSE2i 16x4x2"
+#define ALGORITHM_NAME			"128/128 " SSE_type " 16x4x2"
 #elif (MD5_SSE_PARA==3)
-#define ALGORITHM_NAME		"SSE2i 10x4x3"
+#define ALGORITHM_NAME			"128/128 " SSE_type " 10x4x3"
 #elif (MD5_SSE_PARA==4)
-#define ALGORITHM_NAME		"SSE2i 8x4x4"
+#define ALGORITHM_NAME			"128/128 " SSE_type " 8x4x4"
 #elif (MD5_SSE_PARA==5)
-#define ALGORITHM_NAME		"SSE2i 6x4x5"
+#define ALGORITHM_NAME			"128/128 " SSE_type " 6x4x5"
 #elif (MD5_SSE_PARA==6)
-#define ALGORITHM_NAME		"SSE2i 5x4x6"
-#else //if (MD5_SSE_PARA==8)
-#define ALGORITHM_NAME		"SSE2i 4x4x8"
+#define ALGORITHM_NAME			"128/128 " SSE_type " 5x4x6"
+#elif (MD5_SSE_PARA==8)
+#define ALGORITHM_NAME			"128/128 " SSE_type " 4x4x8"
+#else
+#define ALGORITHM_NAME			"128/128 " SSE_type
 #endif // MD5_SSE_PARA
 #else  // !MD5_SSE_PARA
-#define ALGORITHM_NAME		"SSE2 32x4"
+#define ALGORITHM_NAME			"128/128 " SSE_type " 32x4"
 #endif // PARA
+#else // MMX_COEF == 4
+#if MMX_COEF != 1
+#error Unsupported value of MMX_COEF
+#endif
+#define BLOCK_LOOPS			64
+#define ALGORITHM_NAME			"32/" ARCH_BITS_STR " 64x1"
 #endif // MMX_COEF == 4
 
 #define PLAINTEXT_LENGTH	(27*3+1) // for worst-case UTF-8
@@ -308,7 +316,7 @@ extern void MD5_body_for_thread(int t, MD5_word x[15], MD5_word x2[15], MD5_word
 #else
 extern void MD5_body(MD5_word x[15], MD5_word x2[15], MD5_word out[4], MD5_word out2[4]);
 #endif
-#define ALGORITHM_NAME_X86		"64x2 (MD5_Body)"
+#define ALGORITHM_NAME_X86		"32/" ARCH_BITS_STR " 64x2 (MD5_Body)"
 #define DoMD5(A,L,C) do{if(!force_md5_ctx&&(L[0])<55&&(L[1])<55) {A.x1.b[L[0]]=0x80;A.x2.b2[L[1]]=0x80;A.x1.w[14]=(L[0]<<3);A.x2.w2[14]=(L[1]<<3);MD5_swap(A.x1.w,A.x1.w,(L[0]+4)>>2);MD5_swap(A.x2.w2,A.x2.w2,(L[1]+4)>>2);MD5_body(A.x1.w,A.x2.w2,C.x1.w,C.x2.w2);MD5_swap2(C.x1.w,C.x2.w2,C.x1.w,C.x2.w2,4);} else {MD5_Go2(A.x1.B,L[0],C.x1.B); MD5_Go2(A.x2.B2,L[1],C.x2.B2);} }while(0)
 #define DoMD5o(A,L,C) do{if((L[0])<55&&(L[1])<55) {MD5_body(A.x1.w,A.x2.w2,C.x1.w,C.x2.w2);} else {MD5_Go2(A.x1.B,L[0],C.x1.B); MD5_Go2(A.x2.B2,L[1],C.x2.B2);} }while(0)
 #if ARCH_LITTLE_ENDIAN
@@ -326,7 +334,7 @@ extern void MD5_body_for_thread(int t, ARCH_WORD_32 x[15], ARCH_WORD_32 out[4]);
 #else
 extern void MD5_body(ARCH_WORD_32 x[15], ARCH_WORD_32 out[4]);
 #endif
-#define ALGORITHM_NAME_X86		"128x1 (MD5_Body)"
+#define ALGORITHM_NAME_X86		"32/" ARCH_BITS_STR " 128x1 (MD5_Body)"
 #define DoMD5(A,L,C) do{if(!force_md5_ctx&&(L)<55) {A.x1.b[L]=0x80;A.x1.w[14]=(L<<3);MD5_swap(A.x1.w,A.x1.w,((L+4)>>2));MD5_body(A.x1.w,C.x1.w);MD5_swap(C.x1.w,C.x1.w,4);} else MD5_Go2(A.x1.B,L,C.x1.B); }while(0)
 #define DoMD5o(A,L,C) do{if((L)<55) {MD5_body(A.x1.w,C.x1.w);} else MD5_Go2(A.x1.B,L,C.x1.B); }while(0)
 #if ARCH_LITTLE_ENDIAN
@@ -350,7 +358,7 @@ extern void MD5_body_for_thread(int t, ARCH_WORD_32 x1[15], ARCH_WORD_32 x2[15],
 #else
 extern void MD5_body(ARCH_WORD_32 x1[15], ARCH_WORD_32 x2[15], ARCH_WORD_32 out1[4], ARCH_WORD_32 out2[4]);
 #endif
-#define ALGORITHM_NAME_X86		"64x2 (MD5_body)"
+#define ALGORITHM_NAME_X86		"32/" ARCH_BITS_STR " 64x2 (MD5_body)"
 #define DoMD5(A,L,C) do{if(!force_md5_ctx&&(L[0])<55&&(L[1])<55) {A.x1.b[L[0]]=0x80;A.x2.b2[L[1]]=0x80;A.x1.w[14]=(L[0]<<3);A.x2.w2[14]=(L[1]<<3);MD5_swap(A.x1.w,A.x1.w,(L[0]+4)>>2);MD5_swap(A.x2.w2,A.x2.w2,(L[1]+4)>>2);MD5_body(A.x1.w,A.x2.w2,C.x1.w,C.x2.w2);MD5_swap2(C.x1.w,C.x2.w2,C.x1.w,C.x2.w2,4);} else {MD5_CTX ctx; MD5_Init(&ctx); MD5_Update(&ctx,A.x1.b,L[0]); MD5_Final((unsigned char *)(C.x1.b),&ctx); MD5_Init(&ctx); MD5_Update(&ctx,A.x2.b2,L[1]); MD5_Final((unsigned char *)(C.x2.b2),&ctx);} }while(0)
 #define DoMD5o(A,L,C) do{if((L[0])<55&&(L[1])<55) {MD5_body(A.x1.w,A.x2.w2,C.x1.w,C.x2.w2);} else {MD5_CTX ctx; MD5_Init(&ctx); MD5_Update(&ctx,A.x1.b,L[0]); MD5_Final((unsigned char *)(C.x1.b),&ctx); MD5_Init(&ctx); MD5_Update(&ctx,A.x2.b2,L[1]); MD5_Final((unsigned char *)(C.x2.b2),&ctx);} }while(0)
 #define DoMD5a(A,L,C) do{MD5_body(A->x1.w,A->x2.w2,C->x1.w,C->x2.w2);}while(0)
@@ -363,7 +371,7 @@ extern void MD5_body_for_thread(int t, MD5_word x[15],MD5_word out[4]);
 #else
 extern void MD5_body(MD5_word x[15],MD5_word out[4]);
 #endif
-#define ALGORITHM_NAME_X86		"128x1 (MD5_body)"
+#define ALGORITHM_NAME_X86		"32/" ARCH_BITS_STR " 128x1 (MD5_body)"
 #define DoMD5(A,L,C) do{if(!force_md5_ctx&&(L)<55) {A.x1.b[L]=0x80;A.x1.w[14]=(L<<3);MD5_swap(A.x1.w,A.x1.w,((L+4)>>2));MD5_body(A.x1.w,C.x1.w);MD5_swap(C.x1.w,C.x1.w,4);} else {MD5_CTX ctx; MD5_Init(&ctx); MD5_Update(&ctx,A.x1.b,L); MD5_Final((unsigned char *)(C.x1.b),&ctx); } }while(0)
 #define DoMD5o(A,L,C) do{if((L)<55) {MD5_body(A.x1.w,C.x1.w);} else {MD5_CTX ctx; MD5_Init(&ctx); MD5_Update(&ctx,A.x1.b,L); MD5_Final((unsigned char *)(C.x1.b),&ctx); } }while(0)
 #define DoMD5a(A,L,C) do{MD5_body(A->x1.w,C->x1.w);}while(0)
@@ -642,9 +650,12 @@ static int valid(char *ciphertext, struct fmt_main *pFmt)
 	{
 		// jgypwqm.JsMssPLiS8YQ00$BaaaaaSX
 		int i;
-		for (i = 0; i < 22; ++i)
+		for (i = 0; i < 22; ++i) {
 			if (atoi64[ARCH_INDEX(cp[i])] == 0x7F)
 				return 0;
+		}
+		if (pPriv->dynamic_FIXED_SALT_SIZE == 0)
+			return 1;
 		if (pPriv->dynamic_FIXED_SALT_SIZE && cp[22] != '$')
 			return 0;
 		if (pPriv->dynamic_FIXED_SALT_SIZE > 0 && strlen(&cp[23]) != pPriv->dynamic_FIXED_SALT_SIZE)
@@ -657,9 +668,12 @@ static int valid(char *ciphertext, struct fmt_main *pFmt)
 	{
 		// h3mJrcH0901pqX/m$alex
 		int i;
-		for (i = 0; i < 16; ++i)
+		for (i = 0; i < 16; ++i) {
 			if (atoi64[ARCH_INDEX(cp[i])] == 0x7F)
 				return 0;
+		}
+		if (pPriv->dynamic_FIXED_SALT_SIZE == 0)
+			return 1;
 		if (pPriv->dynamic_FIXED_SALT_SIZE && cp[16] != '$')
 			return 0;
 		if (pPriv->dynamic_FIXED_SALT_SIZE > 0 && strlen(&cp[17]) != pPriv->dynamic_FIXED_SALT_SIZE)
@@ -692,6 +706,9 @@ static int valid(char *ciphertext, struct fmt_main *pFmt)
 		if (atoi16[ARCH_INDEX(cp[i])] == 0x7f)
 			return 0;
 	}
+	if ( (pPriv->pSetup->flags&MGF_SALTED) == 0)
+		return 1;
+
 	if (cp[cipherTextLen] && cp[cipherTextLen] != '$')
 		return 0;
 	if (pPriv->dynamic_FIXED_SALT_SIZE && ciphertext[pPriv->dynamic_SALT_OFFSET-1] != '$')
@@ -712,7 +729,7 @@ static int valid(char *ciphertext, struct fmt_main *pFmt)
 		// check if there is a 'salt-2' or 'username', etc  If that is the case, then this is still 'valid'
 		char *cpX;
 		if (strncmp(&ciphertext[pPriv->dynamic_SALT_OFFSET], "HEX$", 4) == 0) {
-			if (HEX_valid(&ciphertext[pPriv->dynamic_SALT_OFFSET]) > -pPriv->dynamic_FIXED_SALT_SIZE)
+			if (HEX_valid(&ciphertext[pPriv->dynamic_SALT_OFFSET]) > -(pPriv->dynamic_FIXED_SALT_SIZE) )
 				return 0;
 		} else {
 			cpX = mem_alloc(-(pPriv->dynamic_FIXED_SALT_SIZE) + 3);
@@ -845,18 +862,18 @@ static void init(struct fmt_main *pFmt)
  *********************************************************************************/
 static char *prepare(char *split_fields[10], struct fmt_main *pFmt)
 {
+	static char ct[512];
+	private_subformat_data *pPriv = pFmt->private.data;
 	char Tmp[80];
 	int i;
 
-	char *cpBuilding=split_fields[1], *cpTmp=NULL;
+	char *cpBuilding=split_fields[1];
 
-	init(pFmt);
-
-	if (!pFmt->private.data)
+	if (!pPriv)
 		return split_fields[1];
 
 	if (pFmt->params.salt_size && !strchr(split_fields[1], '$')) {
-		if (!curdat.nUserName && !curdat.FldMask)
+		if (!pPriv->nUserName && !pPriv->FldMask)
 			return split_fields[1];
 	}
 
@@ -865,7 +882,6 @@ static char *prepare(char *split_fields[10], struct fmt_main *pFmt)
 	// $dynamic_x$ will be written out (into .pot, output lines, etc).
 	if (!strncmp(cpBuilding, "md5_gen(", 8))
 	{
-		char *ct = mem_alloc_tiny(strlen(cpBuilding) + 6, MEM_ALIGN_NONE);
 		char *cp = &cpBuilding[8], *cpo = &ct[sprintf(ct, "$dynamic_")];
 		while (*cp >= '0' && *cp <= '9')
 			*cpo++ = *cp++;
@@ -875,16 +891,18 @@ static char *prepare(char *split_fields[10], struct fmt_main *pFmt)
 		cpBuilding = ct;
 	}
 
-	cpBuilding = FixupIfNeeded(cpBuilding, &curdat);
+	cpBuilding = FixupIfNeeded(cpBuilding, pPriv);
 	if (strncmp(cpBuilding, "$dynamic_", 9))
 		return split_fields[1];
+
+	if ( (pPriv->pSetup->flags&MGF_SALTED) == 0)
+		return cpBuilding;
 
 	/* at this point, we want to convert ANY and all $HEX$hex into values */
 	/* the reason we want to do this, is so that things read from john.pot file will be in proper 'native' format */
 	/* the ONE exception to this, is if there is a NULL byte in the $HEX$ string, then we MUST leave that $HEX$ string */
 	/* alone, and let the later calls in dynamic.c handle them. */
 	if (strstr(cpBuilding, "$HEX$")) {
-		char *ct = mem_alloc_tiny(strlen(cpBuilding)+1, MEM_ALIGN_NONE);
 		char *cp, *cpo;
 		int bGood=1;
 
@@ -919,23 +937,21 @@ static char *prepare(char *split_fields[10], struct fmt_main *pFmt)
 			cpBuilding = ct;
 	}
 
-	if (curdat.nUserName && !strstr(cpBuilding, "$$U")) {
+	if (pPriv->nUserName && !strstr(cpBuilding, "$$U")) {
 		char *userName=split_fields[0], *cp;
 		// assume field[0] is in format: username OR DOMAIN\\username  If we find a \\, then  use the username 'following' it.
 		cp = strchr(split_fields[0], '\\');
 		if (cp)
 			userName = &cp[1];
-		userName = HandleCase(userName, curdat.nUserName);
-		cpTmp = mem_alloc_tiny(strlen(cpBuilding) + 1 + 3 + strlen(userName), MEM_ALIGN_NONE);
-		sprintf (cpTmp, "%s$$U%s", cpBuilding, userName);
-		cpBuilding = cpTmp;
+		userName = HandleCase(userName, pPriv->nUserName);
+		sprintf (ct, "%s$$U%s", cpBuilding, userName);
+		cpBuilding = ct;
 	}
 	for (i = 0; i <= 8; ++i) {
 		sprintf(Tmp, "$$F%d", i);
-		if ( split_fields[i] &&  (curdat.FldMask&(MGF_FLDx_BIT<<i)) && !strstr(cpBuilding, Tmp)) {
-			cpTmp = mem_alloc_tiny(strlen(cpBuilding) + 1 + 4 + strlen(split_fields[i]), MEM_ALIGN_NONE);
-			sprintf (cpTmp, "%s$$F%d%s", cpBuilding, i, split_fields[i]);
-			cpBuilding = cpTmp;
+		if ( split_fields[i] &&  (pPriv->FldMask&(MGF_FLDx_BIT<<i)) && !strstr(cpBuilding, Tmp)) {
+			sprintf (ct, "%s$$F%d%s", cpBuilding, i, split_fields[i]);
+			cpBuilding = ct;
 		}
 	}
 	return cpBuilding;
@@ -1869,19 +1885,26 @@ static unsigned salt_external_to_internal_convert(unsigned char *extern_salt, un
  *********************************************************************************/
 static void *salt(char *ciphertext)
 {
-	static unsigned char salt_p[sizeof(unsigned char*)];
 	char Salt[SALT_SIZE+1], saltIntBuf[SALT_SIZE+1];
 	int off, possible_neg_one=0;
 	unsigned char *saltp;
 	unsigned the_real_len;
+	static union x {
+		unsigned char salt_p[sizeof(unsigned char*)];
+		unsigned long p[1];
+	} union_x;
+
+	if ( (curdat.pSetup->flags&MGF_SALTED) == 0) {
+		memset(union_x.salt_p, 0, sizeof(union_x.salt_p));
+		return union_x.salt_p;
+	}
 
 	memset(Salt, 0, SALT_SIZE+1);
-	memset(salt_p, 0, sizeof(salt_p));
 
 	// Ok, see if the wrong dynamic type is loaded (such as the 'last' dynamic type).
 	if (!strncmp(ciphertext, "$dynamic_", 9)) {
-		char *cp1 = ciphertext;
-		char *cp2 = curdat.dynamic_WHICH_TYPE_SIG;
+		char *cp1 = &ciphertext[9];
+		char *cp2 = &curdat.dynamic_WHICH_TYPE_SIG[9];
 		while (*cp2 && *cp2 == *cp1) {
 			++cp1; ++cp2;
 		}
@@ -1898,15 +1921,14 @@ static void *salt(char *ciphertext)
 			nFmtNum = -1;
 			sscanf(subformat, "$dynamic_%d", &nFmtNum);
 			if (nFmtNum==-1)
-				return salt_p;
+				return union_x.salt_p;
 			pFmtLocal = dynamic_Get_fmt_main(nFmtNum);
-			if (pFmtLocal)
-				init(pFmtLocal);
+			memcpy(&curdat, pFmtLocal->private.data, sizeof(private_subformat_data));
 		}
 	}
 
 	if (curdat.dynamic_FIXED_SALT_SIZE==0 && !curdat.nUserName && !curdat.FldMask)
-		return salt_p;
+		return union_x.salt_p;
 	if (!strncmp(ciphertext, "$dynamic_", 9))
 		off=curdat.dynamic_SALT_OFFSET;
 	else
@@ -2032,8 +2054,8 @@ static void *salt(char *ciphertext)
 
 	// Now convert this into a stored salt, or find the 'already' stored same salt.
 	saltp = HashSalt((unsigned char*)saltIntBuf, the_real_len);
-	memcpy(salt_p, &saltp, sizeof(saltp));
-	return salt_p;
+	memcpy(union_x.salt_p, &saltp, sizeof(saltp));
+	return union_x.salt_p;
 }
 /*********************************************************************************
  * 'special' get salt function for phpass. We return the 8 bytes salt, followed by
@@ -2044,8 +2066,12 @@ static void *salt(char *ciphertext)
  *********************************************************************************/
 static void *salt_phpass(char *ciphertext)
 {
-	static char salt_p[sizeof(unsigned char*)];
-	static unsigned char salt[20], *saltp;
+	unsigned char salt[20], *saltp;
+	static union x {
+		unsigned char salt_p[sizeof(unsigned char*)];
+		unsigned long p[1];
+	} union_x;
+
 	if (!strncmp(ciphertext, "$dynamic_", 9)) {
 		ciphertext += 9;
 		while (*ciphertext != '$')
@@ -2055,8 +2081,8 @@ static void *salt_phpass(char *ciphertext)
 
 	// Now convert this into a stored salt, or find the 'already' stored same salt.
 	saltp = HashSalt(salt, 15);
-	memcpy(salt_p, &saltp, sizeof(saltp));
-	return salt_p;
+	memcpy(union_x.salt_p, &saltp, sizeof(saltp));
+	return union_x.salt_p;
 }
 
 /*********************************************************************************
@@ -2066,6 +2092,9 @@ static int salt_hash(void *salt)
 {
 	unsigned long H;
 	if (!salt) return 0;
+	if ( (curdat.pSetup->flags&MGF_SALTED) == 0)
+		return 0;
+
 	// salt is now a pointer, but WORD aligned.  We remove that word alingment, and simply use the next bits
 	H = *((unsigned long*)salt);
 
@@ -6971,7 +7000,6 @@ int dynamic_SETUP(DYNAMIC_Setup *Setup, struct fmt_main *pFmt)
 	pFmt->params.max_keys_per_crypt = MAX_KEYS_PER_CRYPT_X86;
 	pFmt->params.algorithm_name = ALGORITHM_NAME_X86;
 #endif
-	Setup->flags ^= MGF_NOTSSE2Safe;
 	dynamic_use_sse = curdat.dynamic_use_sse;
 
 	// Ok, set the new 'constants' data
@@ -7138,28 +7166,28 @@ int dynamic_SETUP(DYNAMIC_Setup *Setup, struct fmt_main *pFmt)
 	{
 #ifdef MMX_COEF
 #if (MMX_COEF==2)
-		pFmt->params.algorithm_name = "MMX 2x1";
+		pFmt->params.algorithm_name = SSE_type " 2x1";
 		pFmt->params.max_keys_per_crypt = 2;
 #elif (MD5_SSE_PARA==1)
-		pFmt->params.algorithm_name = "SSE2i 4x1";
+		pFmt->params.algorithm_name = SSE_type " 4x1";
 		pFmt->params.max_keys_per_crypt = 4;
 #elif (MD5_SSE_PARA==2)
-		pFmt->params.algorithm_name = "SSE2i 4x2";
+		pFmt->params.algorithm_name = SSE_type " 4x2";
 		pFmt->params.max_keys_per_crypt = 8;
 #elif (MD5_SSE_PARA==3)
-		pFmt->params.algorithm_name = "SSE2i 4x3";
+		pFmt->params.algorithm_name = SSE_type " 4x3";
 		pFmt->params.max_keys_per_crypt = 12;
 #elif (MD5_SSE_PARA==4)
-		pFmt->params.algorithm_name = "SSE2i 4x4";
+		pFmt->params.algorithm_name = SSE_type " 4x4";
 		pFmt->params.max_keys_per_crypt = 16;
 #elif (MD5_SSE_PARA==5)
-		pFmt->params.algorithm_name = "SSE2i 4x5";
+		pFmt->params.algorithm_name = SSE_type " 4x5";
 		pFmt->params.max_keys_per_crypt = 20;
 #elif (MD5_SSE_PARA==6)
-		pFmt->params.algorithm_name = "SSE2i 4x6";
+		pFmt->params.algorithm_name = SSE_type " 4x6";
 		pFmt->params.max_keys_per_crypt = 24;
 #else
-		pFmt->params.algorithm_name = "SSE2 4x1";
+		pFmt->params.algorithm_name = SSE_type " 4x1";
 		pFmt->params.max_keys_per_crypt = 4;
 #endif
 #else
@@ -7187,24 +7215,24 @@ int dynamic_SETUP(DYNAMIC_Setup *Setup, struct fmt_main *pFmt)
 		// by doing more than simple 1 set of MMX_COEF
 		pFmt->params.max_keys_per_crypt = 16;
 #if (MMX_COEF==2)
-		pFmt->params.algorithm_name = "MMX 8x2";
+		pFmt->params.algorithm_name = SSE_type " 8x2";
 #elif (MD5_SSE_PARA==1)
-		pFmt->params.algorithm_name = "SSE2i 4x4x1";
+		pFmt->params.algorithm_name = SSE_type " 4x4x1";
 #elif (MD5_SSE_PARA==2)
-		pFmt->params.algorithm_name = "SSE2i 2x4x2";
+		pFmt->params.algorithm_name = SSE_type " 2x4x2";
 #elif (MD5_SSE_PARA==3)
-		pFmt->params.algorithm_name = "SSE2i 2x4x3";
+		pFmt->params.algorithm_name = SSE_type " 2x4x3";
 		pFmt->params.max_keys_per_crypt = 24;
 #elif (MD5_SSE_PARA==4)
-		pFmt->params.algorithm_name = "SSE2i 1x4x4";
+		pFmt->params.algorithm_name = SSE_type " 1x4x4";
 #elif (MD5_SSE_PARA==5)
-		pFmt->params.algorithm_name = "SSE2i 1x4x5";
+		pFmt->params.algorithm_name = SSE_type " 1x4x5";
 		pFmt->params.max_keys_per_crypt = 20;
 #elif (MD5_SSE_PARA==6)
-		pFmt->params.algorithm_name = "SSE2i 1x4x6";
+		pFmt->params.algorithm_name = SSE_type " 1x4x6";
 		pFmt->params.max_keys_per_crypt = 24;
 #else
-		pFmt->params.algorithm_name = "SSE2 4x4";
+		pFmt->params.algorithm_name = SSE_type " 4x4";
 #endif
 #else
 		// In non-sse mode, 1 test runs as fast as 128. But validity checking is MUCH faster if
@@ -7277,7 +7305,7 @@ int dynamic_SETUP(DYNAMIC_Setup *Setup, struct fmt_main *pFmt)
 			curdat.store_keys_normal_but_precompute_md5_to_output2_base16_to_input1 = 0;
 			curdat.dynamic_FUNCTIONS[j++] = DynamicFunc__clean_input;
 			curdat.dynamic_FUNCTIONS[j++] = DynamicFunc__append_keys;
-			curdat.dynamic_FUNCTIONS[j++] = DynamicFunc__crypt;
+			curdat.dynamic_FUNCTIONS[j++] = DynamicFunc__crypt_md5;
 			curdat.dynamic_FUNCTIONS[j++] = DynamicFunc__clean_input;
 			Setup->pFuncs[0] = DynamicFunc__append_from_last_output_as_base16;
 		}
@@ -7454,6 +7482,11 @@ static int LoadOneFormat(int idx, struct fmt_main *pFmt)
 	pFmt->private.data = mem_alloc_tiny(sizeof(private_subformat_data), MEM_ALIGN_WORD);
 	memcpy(pFmt->private.data, &curdat, sizeof(private_subformat_data));
 
+	if (strncmp(curdat.dynamic_WHICH_TYPE_SIG, pFmt->params.tests[0].ciphertext, strlen(curdat.dynamic_WHICH_TYPE_SIG)))
+	{
+		fprintf(stderr, "ERROR, when loading dynamic formats, the wrong curdat item was linked to this type:\nTYPE_SIG=%s\nTest_Dat=%s\n",
+				curdat.dynamic_WHICH_TYPE_SIG, pFmt->params.tests[0].ciphertext);
+	}
 	return 1;
 }
 
@@ -7544,7 +7577,7 @@ void dynamic_RESET(struct fmt_main *fmt)
  * format is part of the md5-generic 'class' of functions.
  */
 
-struct fmt_main *dynamic_THIN_FORMAT_LINK(struct fmt_main *pFmt, char *ciphertext, char *orig_sig)
+struct fmt_main *dynamic_THIN_FORMAT_LINK(struct fmt_main *pFmt, char *ciphertext, char *orig_sig, int bInitAlso)
 {
 	int i, valid, nFmtNum;
 	struct fmt_main *pFmtLocal;
@@ -7593,11 +7626,11 @@ struct fmt_main *dynamic_THIN_FORMAT_LINK(struct fmt_main *pFmt, char *ciphertex
 		pFmt->methods.get_hash[i]    = pFmtLocal->methods.get_hash[i];
 	}
 
-	init(pFmtLocal);
+	if (bInitAlso)
+		init(pFmtLocal);
 
 	pFmt->private.data = mem_alloc_tiny(sizeof(private_subformat_data), MEM_ALIGN_WORD);
-	memcpy(pFmt->private.data, &curdat, sizeof(private_subformat_data));
-
+	memcpy(pFmt->private.data, pFmtLocal->private.data, sizeof(private_subformat_data));
 
 	return pFmtLocal;
 }
