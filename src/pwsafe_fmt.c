@@ -1,33 +1,13 @@
-/* *New* EPiServer cracker patch for JtR. Hacked together during Summer of
- * 2012 by Dhiru Kholia <dhiru.kholia at gmail.com> for GSoC. Based on sample
- * code by hashcat's atom.
+/* Password Safe cracker patch for JtR. Hacked together during May of
+ * 2012 by Dhiru Kholia <dhiru.kholia at gmail.com>.
  *
  * This software is Copyright © 2012, Dhiru Kholia <dhiru.kholia at gmail.com>,
  * and it is hereby released to the general public under the following terms:
  * Redistribution and use in source and binary forms, with or without modification,
- * are permitted.
- *
- * Obtaining hashes from EPiServer 6.x:
- *
- * sqlcmd -L
- * sqlcmd -S <server> -U sa -P <password> *
- * 1> SELECT name from sys.databases
- * 2> go
- * 1> use <database name>
- * 2> select Email, PasswordFormat, PasswordSalt, Password from aspnet_Membership
- * 3> go
- *
- * JtR Input Format:
- *
- * user:$episerver$*version*base64(salt)*base64(hash)
- *
- * Where,
- *
- * version == 0, for EPiServer 6.x standard config / .NET <= 3.5 SHA1 hash/salt format.
- * 		 hash =  sha1(salt | utf16bytes(password)), PasswordFormat == 1 *
- *
- * version == 1, EPiServer 6.x + .NET >= 4.x SHA256 hash/salt format,
- * 		 PasswordFormat == ? */
+ * are permitted. */
+
+#include <openssl/opensslv.h>
+#if OPENSSL_VERSION_NUMBER >= 0x00908000
 
 #if defined(__APPLE__) && defined(__MACH__) && \
 	defined(__MAC_OS_X_VERSION_MIN_REQUIRED) && \
@@ -35,7 +15,7 @@
 #define COMMON_DIGEST_FOR_OPENSSL
 #include <CommonCrypto/CommonDigest.h>
 #else
-#include "sha.h"
+#include <openssl/sha.h>
 #endif
 
 #include <string.h>
@@ -49,41 +29,42 @@
 #include "options.h"
 #include "base64.h"
 #ifdef _OPENMP
+static int omp_t = 1;
 #include <omp.h>
 #define OMP_SCALE               64
 #endif
 
-#define FORMAT_LABEL		"episerver"
-#define FORMAT_NAME		"EPiServer salted SHA-1/SHA-256"
+#define FORMAT_LABEL		"pwsafe"
+#define FORMAT_NAME		"Password Safe SHA-256"
 #define ALGORITHM_NAME		"32/" ARCH_BITS_STR
 #define BENCHMARK_COMMENT	""
 #define BENCHMARK_LENGTH	-1
 #define PLAINTEXT_LENGTH	32
-#define BINARY_SIZE		32 /* larger of the two */
+#define BINARY_SIZE		32
 #define SALT_SIZE		sizeof(struct custom_salt)
 #define MIN_KEYS_PER_CRYPT	1
 #define MAX_KEYS_PER_CRYPT	1
 
-static struct fmt_tests episerver_tests[] = {
-	{"$episerver$*0*fGJ2wn/5WlzqQoDeCA2kXA==*UQgnz/vPWap9UeD8Dhaw3h/fgFA=", "testPassword"},
-	{"$episerver$*0*fGJ2wn/5WlzqQoDeCA2kXA==*uiP1YrZlVcHESbfsRt/wljwNeYU=", "sss"},
-	{"$episerver$*0*fGJ2wn/5WlzqQoDeCA2kXA==*dxTlKqnxaVHs0210VcX+48QDonA=", "notused"},
+static struct fmt_tests pwsafe_tests[] = {
+	{"$pwsafe$*3*fefc1172093344c9d5577b25f5b4b6e5d2942c94f9fc24c21733e28ae6527521*2048*88cbaf7d8668c1a98263f5dce7cb39c3304c49a3e0d76a7ea475dc02ab2f97a7", "12345678"},
+	{"$pwsafe$*3*581cd1135b9b993ccb0f6b01c1fcfacd799c69960496c96286f94fe1400c1b25*2048*4ab3c2d3af251e94eb2f753fdf30fb9da074bec6bac0fa9d9d152b95fc5795c6", "openwall"},
 	{NULL}
 };
+
+
 
 static char (*saved_key)[PLAINTEXT_LENGTH + 1];
 static ARCH_WORD_32 (*crypt_out)[BINARY_SIZE / sizeof(ARCH_WORD_32)];
 
 static struct custom_salt {
 	int version;
-	unsigned char esalt[18]; /* base64 decoding, 24 / 4 * 3 = 18 */
+	unsigned int iterations;
+	char unsigned salt[32];
 } *cur_salt;
 
 static void init(struct fmt_main *pFmt)
 {
-
-#if defined (_OPENMP)
-	static int omp_t = 1;
+#ifdef _OPENMP
 	omp_t = omp_get_max_threads();
 	pFmt->params.min_keys_per_crypt *= omp_t;
 	omp_t *= OMP_SCALE;
@@ -96,7 +77,7 @@ static void init(struct fmt_main *pFmt)
 
 static int valid(char *ciphertext, struct fmt_main *pFmt)
 {
-	return !strncmp(ciphertext, "$episerver$", 11);
+	return !strncmp(ciphertext, "$pwsafe$", 8);
 }
 
 static void *get_salt(char *ciphertext)
@@ -104,12 +85,17 @@ static void *get_salt(char *ciphertext)
 	char *ctcopy = strdup(ciphertext);
 	char *keeptr = ctcopy;
 	char *p;
+	int i;
 	static struct custom_salt cs;
-	ctcopy += 12;	/* skip over "$episerver$*" */
+	ctcopy += 9;	/* skip over "$pwsafe$*" */
 	p = strtok(ctcopy, "*");
 	cs.version = atoi(p);
 	p = strtok(NULL, "*");
-	base64_decode(p, strlen(p), (char*)cs.esalt);
+	for (i = 0; i < 32; i++)
+		cs.salt[i] = atoi16[ARCH_INDEX(p[i * 2])] * 16
+			+ atoi16[ARCH_INDEX(p[i * 2 + 1])];
+	p = strtok(NULL, "*");
+	cs.iterations = (unsigned int)atoi(p);
 	free(keeptr);
 	return (void *)&cs;
 }
@@ -117,13 +103,20 @@ static void *get_salt(char *ciphertext)
 static void *get_binary(char *ciphertext)
 {
 	static union {
-		unsigned char c[BINARY_SIZE+1];
+		unsigned char c[BINARY_SIZE];
 		ARCH_WORD dummy;
 	} buf;
 	unsigned char *out = buf.c;
 	char *p;
+	int i;
 	p = strrchr(ciphertext, '*') + 1;
-	base64_decode(p, strlen(p), (char*)out);
+	for (i = 0; i < BINARY_SIZE; i++) {
+		out[i] =
+		    (atoi16[ARCH_INDEX(*p)] << 4) |
+		    atoi16[ARCH_INDEX(p[1])];
+		p += 2;
+	}
+
 	return out;
 }
 
@@ -156,27 +149,15 @@ static void crypt_all(int count)
 	for (index = 0; index < count; index++)
 #endif
 	{
-		unsigned char passwordBuf[PLAINTEXT_LENGTH*2] = {0};
-		int passwordBufSize = strlen(saved_key[index]) * 2;
+		SHA256_CTX ctx;
 		int i;
-		unsigned char c;
-		int position = 0;
-		for(i = 0; (c = saved_key[index][i]); i++) {
-			passwordBuf[position] = c;
-			position += 2;
-		}
-		if(cur_salt->version == 0) {
-			SHA_CTX ctx;
-			SHA1_Init(&ctx);
-			SHA1_Update(&ctx, cur_salt->esalt, 16);
-			SHA1_Update(&ctx, passwordBuf, passwordBufSize);
-			SHA1_Final((unsigned char*)crypt_out[index], &ctx);
-		}
-		else if(cur_salt->version == 1) {
-			SHA256_CTX ctx;
+		SHA256_Init(&ctx);
+		SHA256_Update(&ctx, saved_key[index], strlen(saved_key[index]));
+		SHA256_Update(&ctx, cur_salt->salt, 32);
+		SHA256_Final((unsigned char*)crypt_out[index], &ctx);
+		for(i = 0; i <= cur_salt->iterations; i++)  {
 			SHA256_Init(&ctx);
-			SHA256_Update(&ctx, cur_salt->esalt, 16);
-			SHA256_Update(&ctx, passwordBuf, passwordBufSize);
+			SHA256_Update(&ctx, (unsigned char*)crypt_out[index], 32);
 			SHA256_Final((unsigned char*)crypt_out[index], &ctx);
 		}
 	}
@@ -188,14 +169,14 @@ static int cmp_all(void *binary, int count)
 #ifdef _OPENMP
 	for (; index < count; index++)
 #endif
-		if (!memcmp(binary, crypt_out[index], 20)) /* BUG: lesser of the two */
+		if (!memcmp(binary, crypt_out[index], BINARY_SIZE))
 			return 1;
 	return 0;
 }
 
 static int cmp_one(void *binary, int index)
 {
-	return !memcmp(binary, crypt_out[index], 20); /* BUG: lesser of the two */
+	return !memcmp(binary, crypt_out[index], BINARY_SIZE);
 }
 
 static int cmp_exact(char *source, int index)
@@ -203,7 +184,7 @@ static int cmp_exact(char *source, int index)
 	return 1;
 }
 
-static void episerver_set_key(char *key, int index)
+static void pwsafe_set_key(char *key, int index)
 {
 	int saved_key_length = strlen(key);
 	if (saved_key_length > PLAINTEXT_LENGTH)
@@ -217,7 +198,7 @@ static char *get_key(int index)
 	return saved_key[index];
 }
 
-struct fmt_main episerver_fmt = {
+struct fmt_main pwsafe_fmt = {
 	{
 		FORMAT_LABEL,
 		FORMAT_NAME,
@@ -230,7 +211,7 @@ struct fmt_main episerver_fmt = {
 		MIN_KEYS_PER_CRYPT,
 		MAX_KEYS_PER_CRYPT,
 		FMT_CASE | FMT_8_BIT | FMT_OMP,
-		episerver_tests
+		pwsafe_tests
 	}, {
 		init,
 		fmt_default_prepare,
@@ -249,7 +230,7 @@ struct fmt_main episerver_fmt = {
 		},
 		fmt_default_salt_hash,
 		set_salt,
-		episerver_set_key,
+		pwsafe_set_key,
 		get_key,
 		fmt_default_clear_keys,
 		crypt_all,
@@ -267,3 +248,8 @@ struct fmt_main episerver_fmt = {
 		cmp_exact
 	}
 };
+#else
+#ifdef __GNUC__
+#warning Note: pwsafe format disabled - it needs OpenSSL 0.9.8 or above
+#endif
+#endif

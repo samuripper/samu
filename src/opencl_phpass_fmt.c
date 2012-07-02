@@ -1,5 +1,5 @@
 /*
-* This software is Copyright (c) 2011-2012 Lukas Odzioba <ukasz@openwall.net> 
+* This software is Copyright (c) 2011-2012 Lukas Odzioba <ukasz@openwall.net>
 * and it is hereby released to the general public under the following terms:
 * Redistribution and use in source and binary forms, with or without modification, are permitted.
 */
@@ -88,7 +88,7 @@ static struct fmt_tests tests[] = {
 	   {"$P$9saltstriGLUwnE6bl91BPJP6sxyka.", "abcdefghijkl"},
 	   {"$P$9saltstriq7s97e2m7dXnTEx2mtPzx.", "abcdefghijklm"},
 	   {"$P$9saltstriTWMzWKsEeiE7CKOVVU.rS0", "abcdefghijklmn"},
-	   {"$P$9saltstriXt7EDPKtkyRVOqcqEW5UU.", "abcdefghijklmno"}, 
+	   {"$P$9saltstriXt7EDPKtkyRVOqcqEW5UU.", "abcdefghijklmno"},
 	 */
 	{NULL}
 };
@@ -124,6 +124,7 @@ static char *get_key(int index)
 
 static void init(struct fmt_main *pFmt)
 {
+	cl_int cl_error;
 	atexit(release_all);
 	opencl_init("$JOHN/phpass_kernel.cl", gpu_id,platform_id);
 
@@ -136,8 +137,6 @@ static void init(struct fmt_main *pFmt)
 	    (phpass_hash *) calloc(MAX_KEYS_PER_CRYPT,
 	    sizeof(phpass_hash));
 	assert(inbuffer != NULL);
-
-	cl_int cl_error;
 	mem_in =
 	    clCreateBuffer(context[gpu_id], CL_MEM_READ_ONLY, insize, NULL,
 	    &cl_error);
@@ -198,10 +197,10 @@ static int valid(char *ciphertext, struct fmt_main *pFmt)
 static void *binary(char *ciphertext)
 {
 	static unsigned char b[BINARY_SIZE];
-	memset(b, 0, BINARY_SIZE);
 	int i, bidx = 0;
 	unsigned sixbits;
 	char *pos = &ciphertext[3 + 1 + 8];
+	memset(b, 0, BINARY_SIZE);
 
 	for (i = 0; i < 5; i++) {
 		sixbits = atoi64[ARCH_INDEX(*pos++)];
