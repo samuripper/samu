@@ -22,7 +22,7 @@
 #define MAX_OCLINFO_STRING_LEN	64
 
 /* Comment if you do not want to see OpenCL warnings during kernel compilation */
-//#define REPORT_OPENCL_WARNINGS
+#define REPORT_OPENCL_WARNINGS
 
 /* Common OpenCL variables */
 int gpu_id, platform_id;
@@ -35,6 +35,7 @@ cl_int ret_code;
 cl_kernel crypt_kernel;
 cl_event profilingEvent;
 size_t local_work_size;
+size_t global_work_size;
 size_t max_group_size;
 
 int device_info[MAXGPUS];
@@ -67,8 +68,8 @@ int get_vendor_id(int dev_id);
 #define INTEL                   256
 #define AMD_GCN                 1024
 #define AMD_VLIW4               2048
-#define AMD_VLIW5               4096 
-        
+#define AMD_VLIW5               4096
+
 #define cpu(n)                  ((n & CPU) == (CPU))
 #define gpu(n)                  ((n & GPU) == (GPU))
 #define gpu_amd(n)              ((n & AMD) && gpu(n))

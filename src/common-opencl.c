@@ -40,7 +40,9 @@ static void read_kernel_source(char *kernel_filename)
 	fseek(fp, 0, SEEK_END);
 	source_size = ftell(fp);
 	fseek(fp, 0, SEEK_SET);
-	kernel_source = mem_calloc_tiny(source_size, MEM_ALIGN_NONE);
+	if (kernel_source != NULL)
+		free(kernel_source);
+	kernel_source = calloc(source_size + 1, 1);
 	read_size = fread(kernel_source, sizeof(char), source_size, fp);
 	if (read_size != source_size)
 		fprintf(stderr,
@@ -54,7 +56,7 @@ static void dev_init(unsigned int dev_id, unsigned int platform_id)
 {
 	cl_platform_id platform[MAX_PLATFORMS];
 	cl_uint num_platforms, device_num;
-
+	cl_context_properties properties[3];
 	assert(dev_id < MAXGPUS);
 	///Find CPU's
 	HANDLE_CLERROR(clGetPlatformIDs(MAX_PLATFORMS, platform,
@@ -67,11 +69,10 @@ static void dev_init(unsigned int dev_id, unsigned int platform_id)
 	    "No OpenCL device of that type exist");
 	fprintf(stderr, "OpenCL platform %d: %s, %d device(s).\n", platform_id,
 	    opencl_log, device_num);
-	cl_context_properties properties[] = {
-		CL_CONTEXT_PLATFORM,
-		    (cl_context_properties) platform[platform_id],
-		0
-	};
+
+	properties[0] = CL_CONTEXT_PLATFORM;
+	properties[1] = (cl_context_properties) platform[platform_id];
+	properties[2] = 0;
 	HANDLE_CLERROR(clGetDeviceInfo(devices[dev_id], CL_DEVICE_NAME,
 		sizeof(opencl_log), opencl_log, NULL),
 	    "Error querying DEVICE_NAME");
@@ -107,14 +108,14 @@ static char *include_source(char *pathname, int dev_id)
 
 static void build_kernel(int dev_id)
 {
-	assert(kernel_loaded);
+	cl_int build_code;
 	const char *srcptr[] = { kernel_source };
+	assert(kernel_loaded);
 	program[dev_id] =
 	    clCreateProgramWithSource(context[dev_id], 1, srcptr, NULL,
 	    &ret_code);
 	HANDLE_CLERROR(ret_code, "Error while creating program");
 
-	cl_int build_code;
 	build_code = clBuildProgram(program[dev_id], 0, NULL,
 	    include_source("$JOHN/", dev_id), NULL, NULL);
 
@@ -153,34 +154,42 @@ static void build_kernel(int dev_id)
 #endif
 }
 
-/* Remember to use profilingEvent in your crypt_all() if you want to use this function */
+/* NOTE: Remember to use profilingEvent in your crypt_all() if you want to use
+   this function */
 void opencl_find_best_workgroup(struct fmt_main *pFmt)
 {
 	cl_ulong startTime, endTime, kernelExecTimeNs = CL_ULONG_MAX;
-	size_t my_work_group, optimal_work_group = 1;
+	size_t my_work_group, optimal_work_group;
 	cl_int ret_code;
-	int i;
-	size_t max_group_size, wg_multiple;
-
-	HANDLE_CLERROR(clGetKernelWorkGroupInfo(crypt_kernel, devices[gpu_id],
-		CL_KERNEL_WORK_GROUP_SIZE, sizeof(max_group_size),
-		&max_group_size, NULL),
-	    "Error while getting CL_KERNEL_WORK_GROUP_SIZE");
+	int i, numloops;
+	size_t orig_group_size, max_group_size, wg_multiple, sumStartTime, sumEndTime;
 
 #if __OPENCL_VERSION__ < 110
 	cl_device_type device_type;
 	clGetDeviceInfo(devices[gpu_id], CL_DEVICE_TYPE,
 	    sizeof(device_type), &device_type, NULL);
-	wg_multiple = 1;
+	wg_multiple = 8; // Recommended by Intel
 	if (device_type == CL_DEVICE_TYPE_GPU)
 		wg_multiple = 32;
-
 #else
 	HANDLE_CLERROR(clGetKernelWorkGroupInfo(crypt_kernel, devices[gpu_id],
 		CL_KERNEL_PREFERRED_WORK_GROUP_SIZE_MULTIPLE,
 		sizeof(wg_multiple), &wg_multiple, NULL),
 	    "Error while getting CL_KERNEL_PREFERRED_WORK_GROUP_SIZE_MULTIPLE");
 #endif
+
+	orig_group_size = global_work_size;
+	global_work_size = pFmt->params.max_keys_per_crypt;
+
+	HANDLE_CLERROR(clGetKernelWorkGroupInfo(crypt_kernel, devices[gpu_id],
+		CL_KERNEL_WORK_GROUP_SIZE, sizeof(max_group_size),
+		&max_group_size, NULL),
+	    "Error while getting CL_KERNEL_WORK_GROUP_SIZE");
+
+	// Safety harness
+	if (wg_multiple > max_group_size)
+		wg_multiple = max_group_size;
+
 	///Command Queue changing:
 	///1) Delete old CQ
 	clReleaseCommandQueue(queue[gpu_id]);
@@ -190,8 +199,7 @@ void opencl_find_best_workgroup(struct fmt_main *pFmt)
 	    CL_QUEUE_PROFILING_ENABLE, &ret_code);
 	HANDLE_CLERROR(ret_code, "Error creating command queue");
 
-	printf("Max local work size %d\n", (int) max_group_size);
-	local_work_size = 1;
+	//fprintf(stderr, "Max local work size %d, ", (int) max_group_size);
 
 	/// Set keys - first key from tests will be benchmarked
 	for (i = 0; i < pFmt->params.max_keys_per_crypt; i++) {
@@ -201,30 +209,57 @@ void opencl_find_best_workgroup(struct fmt_main *pFmt)
 	pFmt->methods.set_salt(pFmt->methods.salt(pFmt->params.tests[0].
 		ciphertext));
 
+	/// Warm-up run
+	local_work_size = wg_multiple;
+	pFmt->methods.crypt_all(pFmt->params.max_keys_per_crypt);
+
+	// Timing run
+	pFmt->methods.crypt_all(pFmt->params.max_keys_per_crypt);
+	HANDLE_CLERROR(clFinish(queue[gpu_id]), "clFinish error");
+	clGetEventProfilingInfo(profilingEvent,
+	    CL_PROFILING_COMMAND_SUBMIT, sizeof(cl_ulong), &startTime,
+	    NULL);
+	clGetEventProfilingInfo(profilingEvent,
+	    CL_PROFILING_COMMAND_END, sizeof(cl_ulong), &endTime,
+	    NULL);
+	numloops = (int)(size_t)(500000000ULL / (endTime-startTime));
+	if (numloops < 1)
+		numloops = 1;
+	//fprintf(stderr, "%zu, %zu, time: %zu, loops: %d\n", endTime, startTime, (endTime-startTime), numloops);
+
 	/// Find minimum time
-	for (my_work_group = wg_multiple;
+	for (optimal_work_group = my_work_group = wg_multiple;
 	    (int) my_work_group <= (int) max_group_size;
 	    my_work_group += wg_multiple) {
 
 		if (pFmt->params.max_keys_per_crypt % my_work_group != 0)
 			continue;
-		
-		clGetEventProfilingInfo(profilingEvent,
-		    CL_PROFILING_COMMAND_SUBMIT, sizeof(cl_ulong), &startTime,
-		    NULL);
 
-		pFmt->methods.crypt_all(pFmt->params.max_keys_per_crypt);
+		sumStartTime = 0;
+		sumEndTime = 0;
 
-		clGetEventProfilingInfo(profilingEvent,
-		    CL_PROFILING_COMMAND_END, sizeof(cl_ulong), &endTime,
-		    NULL);
+		for (i = 0; i < numloops; i++) {
+			local_work_size = my_work_group;
 
-		if ((endTime - startTime) < kernelExecTimeNs) {
-			kernelExecTimeNs = endTime - startTime;
+			pFmt->methods.crypt_all(pFmt->params.max_keys_per_crypt);
+
+			HANDLE_CLERROR(clFinish(queue[gpu_id]), "clFinish error");
+			clGetEventProfilingInfo(profilingEvent,
+			                        CL_PROFILING_COMMAND_SUBMIT, sizeof(cl_ulong), &startTime,
+			                        NULL);
+			clGetEventProfilingInfo(profilingEvent,
+			                        CL_PROFILING_COMMAND_END, sizeof(cl_ulong), &endTime,
+			                        NULL);
+			//fprintf(stderr, "%zu, %zu, time: %zu\n", endTime, startTime, (endTime-startTime));
+			sumStartTime += startTime;
+			sumEndTime += endTime;
+		}
+		if ((sumEndTime - sumStartTime) < kernelExecTimeNs) {
+			kernelExecTimeNs = sumEndTime - sumStartTime;
 			optimal_work_group = my_work_group;
 		}
-		//printf("%d time=%lld\n",(int) my_work_group, endTime-startTime);
-		}
+		//fprintf(stderr, "%d time=%llu\n",(int) my_work_group, (unsigned long long)sumEndTime-sumStartTime);
+	}
 	///Release profiling queue and create new with profiling disabled
 	clReleaseCommandQueue(queue[gpu_id]);
 	queue[gpu_id] =
@@ -232,7 +267,8 @@ void opencl_find_best_workgroup(struct fmt_main *pFmt)
 	    &ret_code);
 	HANDLE_CLERROR(ret_code, "Error creating command queue");
 	local_work_size = optimal_work_group;
-	printf("Optimal local work size = %d\n", (int) local_work_size);
+	//fprintf(stderr, "Optimal local work size = %d\n", (int) local_work_size);
+	global_work_size = orig_group_size;
 }
 
 
@@ -267,7 +303,7 @@ void opencl_build_kernel(char *kernel_filename, unsigned int dev_id)
 
 void opencl_init(char *kernel_filename, unsigned int dev_id,
     unsigned int platform_id)
-{	
+{
 	kernel_loaded=0;
 	opencl_init_dev(dev_id, platform_id);
 	opencl_build_kernel(kernel_filename, dev_id);

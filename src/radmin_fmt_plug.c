@@ -1,13 +1,14 @@
-/* Password Safe and Password Gorilla cracker patch for JtR. Hacked together
- * during May of 2012 by Dhiru Kholia <dhiru.kholia at gmail.com>.
+/* RAdmin v2.x cracker patch for JtR. Hacked together during
+ * May of 2012 by Dhiru Kholia <dhiru.kholia at gmail.com>.
  *
  * This software is Copyright © 2012, Dhiru Kholia <dhiru.kholia at gmail.com>,
  * and it is hereby released to the general public under the following terms:
  * Redistribution and use in source and binary forms, with or without modification,
- * are permitted. */
+ * are permitted.
+ *
+ * Input Format => user:$radmin2$hash */
 
-#include "sha2.h"
-
+#include "md5.h"
 #include <string.h>
 #include <assert.h>
 #include <errno.h>
@@ -17,89 +18,65 @@
 #include "formats.h"
 #include "params.h"
 #include "options.h"
-#include "base64.h"
 #ifdef _OPENMP
-static int omp_t = 1;
 #include <omp.h>
 #define OMP_SCALE               64
 #endif
 
-#define FORMAT_LABEL		"pwsafe"
-#define FORMAT_NAME		"Password Safe SHA-256"
-#define ALGORITHM_NAME		"32/" ARCH_BITS_STR " " SHA2_LIB
+#define FORMAT_LABEL		"radmin"
+#define FORMAT_NAME		"RAdmin v2.x MD5"
+#define ALGORITHM_NAME		"32/" ARCH_BITS_STR
 #define BENCHMARK_COMMENT	""
 #define BENCHMARK_LENGTH	-1
 #define PLAINTEXT_LENGTH	32
-#define BINARY_SIZE		32
-#define SALT_SIZE		sizeof(struct custom_salt)
+#define CIPHERTEXT_LENGTH	32
+#define BINARY_SIZE		16
+#define SALT_SIZE		0
 #define MIN_KEYS_PER_CRYPT	1
 #define MAX_KEYS_PER_CRYPT	1
 
-static struct fmt_tests pwsafe_tests[] = {
-	{"$pwsafe$*3*fefc1172093344c9d5577b25f5b4b6e5d2942c94f9fc24c21733e28ae6527521*2048*88cbaf7d8668c1a98263f5dce7cb39c3304c49a3e0d76a7ea475dc02ab2f97a7", "12345678"},
-	{"$pwsafe$*3*581cd1135b9b993ccb0f6b01c1fcfacd799c69960496c96286f94fe1400c1b25*2048*4ab3c2d3af251e94eb2f753fdf30fb9da074bec6bac0fa9d9d152b95fc5795c6", "openwall"},
+static struct fmt_tests radmin_tests[] = {
+	{"$radmin2$B137F09CF92F465CABCA06AB1B283C1F", "lastwolf"},
+	{"$radmin2$14e897b1a9354f875df51047bb1a0765", "podebradka"},
+	{"$radmin2$02ba5e187e2589be6f80da0046aa7e3c", "12345678"},
+	{"$radmin2$b4e13c7149ebde51e510959f30319ac7", "firebaLL"},
+	{"$radmin2$3d2c8cae4621edf8abb081408569482b", "yamaha12345"},
+	{"$radmin2$60cb8e411b02c10ecc3c98e29e830de8", "xplicit"},
 	{NULL}
 };
 
-
-
 static char (*saved_key)[PLAINTEXT_LENGTH + 1];
-static ARCH_WORD_32 (*crypt_out)[BINARY_SIZE / sizeof(ARCH_WORD_32)];
-
-static struct custom_salt {
-	int version;
-	unsigned int iterations;
-	char unsigned salt[32];
-} *cur_salt;
+static ARCH_WORD_32 (*crypt_out)[8];
 
 static void init(struct fmt_main *pFmt)
 {
 #ifdef _OPENMP
-	omp_t = omp_get_max_threads();
+	int omp_t = omp_get_max_threads();
 	pFmt->params.min_keys_per_crypt *= omp_t;
 	omp_t *= OMP_SCALE;
 	pFmt->params.max_keys_per_crypt *= omp_t;
 #endif
 	saved_key = mem_calloc_tiny(sizeof(*saved_key) *
 			pFmt->params.max_keys_per_crypt, MEM_ALIGN_NONE);
-	crypt_out = mem_calloc_tiny(sizeof(*crypt_out) * pFmt->params.max_keys_per_crypt, MEM_ALIGN_WORD);
+	crypt_out = mem_calloc_tiny(sizeof(*crypt_out) *
+			pFmt->params.max_keys_per_crypt, MEM_ALIGN_WORD);
 }
 
 static int valid(char *ciphertext, struct fmt_main *pFmt)
 {
-	return !strncmp(ciphertext, "$pwsafe$", 8);
-}
-
-static void *get_salt(char *ciphertext)
-{
-	char *ctcopy = strdup(ciphertext);
-	char *keeptr = ctcopy;
-	char *p;
-	int i;
-	static struct custom_salt cs;
-	ctcopy += 9;	/* skip over "$pwsafe$*" */
-	p = strtok(ctcopy, "*");
-	cs.version = atoi(p);
-	p = strtok(NULL, "*");
-	for (i = 0; i < 32; i++)
-		cs.salt[i] = atoi16[ARCH_INDEX(p[i * 2])] * 16
-			+ atoi16[ARCH_INDEX(p[i * 2 + 1])];
-	p = strtok(NULL, "*");
-	cs.iterations = (unsigned int)atoi(p);
-	free(keeptr);
-	return (void *)&cs;
+	return !strncmp(ciphertext, "$radmin2$", 9);
 }
 
 static void *get_binary(char *ciphertext)
 {
 	static union {
-		unsigned char c[BINARY_SIZE];
+		unsigned char c[BINARY_SIZE+1];
 		ARCH_WORD dummy;
 	} buf;
 	unsigned char *out = buf.c;
 	char *p;
 	int i;
-	p = strrchr(ciphertext, '*') + 1;
+	p = strrchr(ciphertext, '$') + 1;
 	for (i = 0; i < BINARY_SIZE; i++) {
 		out[i] =
 		    (atoi16[ARCH_INDEX(*p)] << 4) |
@@ -126,11 +103,6 @@ static int get_hash_4(int index) { return crypt_out[index][0] & 0xfffff; }
 static int get_hash_5(int index) { return crypt_out[index][0] & 0xffffff; }
 static int get_hash_6(int index) { return crypt_out[index][0] & 0x7ffffff; }
 
-static void set_salt(void *salt)
-{
-	cur_salt = (struct custom_salt *)salt;
-}
-
 static void crypt_all(int count)
 {
 	int index = 0;
@@ -139,17 +111,12 @@ static void crypt_all(int count)
 	for (index = 0; index < count; index++)
 #endif
 	{
-		SHA256_CTX ctx;
-		int i;
-		SHA256_Init(&ctx);
-		SHA256_Update(&ctx, saved_key[index], strlen(saved_key[index]));
-		SHA256_Update(&ctx, cur_salt->salt, 32);
-		SHA256_Final((unsigned char*)crypt_out[index], &ctx);
-		for(i = 0; i <= cur_salt->iterations; i++)  {
-			SHA256_Init(&ctx);
-			SHA256_Update(&ctx, (unsigned char*)crypt_out[index], 32);
-			SHA256_Final((unsigned char*)crypt_out[index], &ctx);
-		}
+		unsigned char input[100] = { 0 };
+		MD5_CTX ctx;
+		MD5_Init(&ctx);
+		strcpy((char*)input, (const char*)saved_key[index]);
+		MD5_Update(&ctx, input, 100);
+		MD5_Final((unsigned char *)crypt_out[index], &ctx);
 	}
 }
 
@@ -174,7 +141,7 @@ static int cmp_exact(char *source, int index)
 	return 1;
 }
 
-static void pwsafe_set_key(char *key, int index)
+static void radmin_set_key(char *key, int index)
 {
 	int saved_key_length = strlen(key);
 	if (saved_key_length > PLAINTEXT_LENGTH)
@@ -188,7 +155,7 @@ static char *get_key(int index)
 	return saved_key[index];
 }
 
-struct fmt_main pwsafe_fmt = {
+struct fmt_main radmin_fmt = {
 	{
 		FORMAT_LABEL,
 		FORMAT_NAME,
@@ -201,14 +168,14 @@ struct fmt_main pwsafe_fmt = {
 		MIN_KEYS_PER_CRYPT,
 		MAX_KEYS_PER_CRYPT,
 		FMT_CASE | FMT_8_BIT | FMT_OMP,
-		pwsafe_tests
+		radmin_tests
 	}, {
 		init,
 		fmt_default_prepare,
 		valid,
 		fmt_default_split,
 		get_binary,
-		get_salt,
+		fmt_default_salt,
 		{
 			binary_hash_0,
 			binary_hash_1,
@@ -219,8 +186,8 @@ struct fmt_main pwsafe_fmt = {
 			binary_hash_6
 		},
 		fmt_default_salt_hash,
-		set_salt,
-		pwsafe_set_key,
+		fmt_default_set_salt,
+		radmin_set_key,
 		get_key,
 		fmt_default_clear_keys,
 		crypt_all,
@@ -238,3 +205,4 @@ struct fmt_main pwsafe_fmt = {
 		cmp_exact
 	}
 };
+

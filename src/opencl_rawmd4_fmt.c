@@ -15,10 +15,10 @@
 #include "formats.h"
 #include "common-opencl.h"
 
-#define MD5_NUM_KEYS        1024*2048*2
+#define MD4_NUM_KEYS        1024*2048
 #define PLAINTEXT_LENGTH    31
-#define FORMAT_LABEL        "raw-md5-opencl"
-#define FORMAT_NAME         "Raw MD5"
+#define FORMAT_LABEL        "raw-md4-opencl"
+#define FORMAT_NAME         "Raw MD4"
 #define ALGORITHM_NAME      "OpenCL"
 #define BENCHMARK_COMMENT   ""
 #define BENCHMARK_LENGTH    -1
@@ -26,23 +26,35 @@
 #define BINARY_SIZE         16
 #define SALT_SIZE           0
 
-static cl_command_queue queue_prof;
-static cl_mem pinned_saved_keys, pinned_partial_hashes, buffer_out, buffer_keys, data_info;
+cl_command_queue queue_prof;
+cl_mem pinned_saved_keys, pinned_partial_hashes, buffer_out, buffer_keys, data_info;
 static cl_uint *partial_hashes;
 static cl_uint *res_hashes;
 static char *saved_plain;
 static char get_key_saved[PLAINTEXT_LENGTH + 1];
 
 #define MIN_KEYS_PER_CRYPT      2048
-#define MAX_KEYS_PER_CRYPT      MD5_NUM_KEYS
+#define MAX_KEYS_PER_CRYPT      MD4_NUM_KEYS
 static unsigned int datai[2];
 static int have_full_hashes;
 
-static int max_keys_per_crypt = MD5_NUM_KEYS;
+static int max_keys_per_crypt = MD4_NUM_KEYS;
 
 static struct fmt_tests tests[] = {
-	{"098f6bcd4621d373cade4e832627b4f6", "test"},
-	{"d41d8cd98f00b204e9800998ecf8427e", ""},
+	{"8a9d093f14f8701df17732b2bb182c74", "password"},
+	{"$MD4$6d78785c44ea8dfa178748b245d8c3ae", "magnum" },
+	{"$MD4$31d6cfe0d16ae931b73c59d7e0c089c0", "" },
+	{"$MD4$934eb897904769085af8101ad9dabca2", "John the ripper" },
+	{"$MD4$cafbb81fb64d9dd286bc851c4c6e0d21", "lolcode" },
+	{"$MD4$585028aa0f794af812ee3be8804eb14a", "123456" },
+	{"$MD4$23580e2a459f7ea40f9efa148b63cafb", "12345" },
+	{"$MD4$2ae523785d0caf4d2fb557c12016185c", "123456789" },
+	{"$MD4$f3e80e83b29b778bc092bf8a7c6907fe", "iloveyou" },
+	{"$MD4$4d10a268a303379f224d8852f2d13f11", "princess" },
+	{"$MD4$bf75555ca19051f694224f2f5e0b219d", "1234567" },
+	{"$MD4$41f92cf74e3d2c3ba79183629a929915", "rockyou" },
+	{"$MD4$012d73e0fab8d26e0f4d65e36077511e", "12345678" },
+	{"$MD4$0ceb1fd260c35bd50005341532748de6", "abc123" },
 	{NULL}
 };
 
@@ -120,7 +132,7 @@ static void find_best_kpc(void){
 	cl_uint *tmpbuffer;
 
 	fprintf(stderr, "Calculating best keys per crypt, this will take a while ");
-	for( num=MD5_NUM_KEYS; num > 4096 ; num -= 4096){
+	for( num=MD4_NUM_KEYS; num > 4096 ; num -= 4096){
 		release_clobj();
 		create_clobj(num);
 		advance_cursor();
@@ -158,29 +170,29 @@ static void find_best_kpc(void){
 	create_clobj(optimal_kpc);
 }
 
-static void fmt_MD5_init(struct fmt_main *pFmt) {
+static void init(struct fmt_main *pFmt) {
 	char *kpc;
 
 	global_work_size = MAX_KEYS_PER_CRYPT;
 
-	opencl_init("$JOHN/md5_kernel.cl", gpu_id, platform_id);
-	crypt_kernel = clCreateKernel(program[gpu_id], "md5", &ret_code);
+	opencl_init("$JOHN/md4_kernel.cl", gpu_id, platform_id);
+	crypt_kernel = clCreateKernel(program[gpu_id], "md4", &ret_code);
 	HANDLE_CLERROR(ret_code, "Error creating kernel. Double-check kernel name?");
 	if( ((kpc = getenv("LWS")) == NULL) || (atoi(kpc) == 0)) {
-		create_clobj(MD5_NUM_KEYS);
+		create_clobj(MD4_NUM_KEYS);
 		opencl_find_best_workgroup(pFmt);
 		release_clobj();
 	}else {
 		local_work_size = atoi(kpc);
 	}
 	if( (kpc = getenv("GWS")) == NULL){
-		max_keys_per_crypt = MD5_NUM_KEYS;
-		create_clobj(MD5_NUM_KEYS);
+		max_keys_per_crypt = MD4_NUM_KEYS;
+		create_clobj(MD4_NUM_KEYS);
 	} else {
 		if (atoi(kpc) == 0){
 			//user chose to die of boredom
-			max_keys_per_crypt = MD5_NUM_KEYS;
-			create_clobj(MD5_NUM_KEYS);
+			max_keys_per_crypt = MD4_NUM_KEYS;
+			create_clobj(MD4_NUM_KEYS);
 			find_best_kpc();
 		} else {
 			max_keys_per_crypt = atoi(kpc);
@@ -194,7 +206,7 @@ static void fmt_MD5_init(struct fmt_main *pFmt) {
 static int valid(char *ciphertext, struct fmt_main *pFmt) {
 	char *p, *q;
 	p = ciphertext;
-	if (!strncmp(p, "$MD5$", 5))
+	if (!strncmp(p, "$MD4$", 5))
 		p += 5;
 	q = p;
 	while (atoi16[ARCH_INDEX(*q)] != 0x7F)
@@ -205,10 +217,10 @@ static int valid(char *ciphertext, struct fmt_main *pFmt) {
 static char *split(char *ciphertext, int index) {
 	static char out[5 + CIPHERTEXT_LENGTH + 1];
 
-	if (!strncmp(ciphertext, "$MD5$", 5))
+	if (!strncmp(ciphertext, "$MD4$", 5))
 		return ciphertext;
 
-	memcpy(out, "$MD5$", 5);
+	memcpy(out, "$MD4$", 5);
 	memcpy(out + 5, ciphertext, CIPHERTEXT_LENGTH + 1);
 	return out;
 }
@@ -345,7 +357,7 @@ static int cmp_exact(char *source, int count){
 	return 1;
 }
 
-struct fmt_main fmt_opencl_rawMD5 = {
+struct fmt_main fmt_opencl_rawMD4 = {
 	{
 		FORMAT_LABEL,
 		FORMAT_NAME,
@@ -358,21 +370,23 @@ struct fmt_main fmt_opencl_rawMD5 = {
 		MIN_KEYS_PER_CRYPT,
 		MAX_KEYS_PER_CRYPT,
 		FMT_CASE | FMT_8_BIT,
-	tests}, {
-		fmt_MD5_init,
+		tests
+	}, {
+		init,
 		fmt_default_prepare,
 		valid,
 		split,
 		get_binary,
 		fmt_default_salt,
 		{
-		binary_hash_0,
-		binary_hash_1,
-		binary_hash_2,
-		binary_hash_3,
-		binary_hash_4,
-		binary_hash_5,
-		binary_hash_6},
+			binary_hash_0,
+			binary_hash_1,
+			binary_hash_2,
+			binary_hash_3,
+			binary_hash_4,
+			binary_hash_5,
+			binary_hash_6
+		},
 		fmt_default_salt_hash,
 		set_salt,
 		set_key,
@@ -380,14 +394,16 @@ struct fmt_main fmt_opencl_rawMD5 = {
 		fmt_default_clear_keys,
 		crypt_all,
 		{
-		get_hash_0,
-		get_hash_1,
-		get_hash_2,
-		get_hash_3,
-		get_hash_4,
-		get_hash_5,
-		get_hash_6},
+			get_hash_0,
+			get_hash_1,
+			get_hash_2,
+			get_hash_3,
+			get_hash_4,
+			get_hash_5,
+			get_hash_6
+		},
 		cmp_all,
 		cmp_one,
-	cmp_exact}
+		cmp_exact
+	}
 };

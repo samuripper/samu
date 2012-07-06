@@ -198,7 +198,7 @@ static struct opt_entry opt_list[] = {
 "                         " // formats are prepended with a space
 
 #define JOHN_USAGE_TAIL \
-"--list=WHAT               list capabilities, see doc/OPTIONS or --list=?\n" \
+"--list=WHAT               list capabilities, see --list=help or doc/OPTIONS\n" \
 "--save-memory=LEVEL       enable memory saving, at LEVEL 1..3\n" \
 "--mem-file-size=SIZE      size threshold for wordlist preload (default 5 MB)\n" \
 "--nolog                   disables creation and writing to john.log file\n" \
@@ -265,7 +265,7 @@ static void print_usage(char *name)
 		char *label = formats_list[i++];
 		length = strlen(label) + 1;
 		column += length;
-		if (column > 80) {
+		if (column > 79) { /* silly Redmond Bug[tm] if we use 80 */
 			printf("\n" JOHN_USAGE_INDENT);
 			column = strlen(JOHN_USAGE_INDENT) + length;
 		}
