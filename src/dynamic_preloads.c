@@ -399,13 +399,29 @@ static struct fmt_tests _Preloads_14[] =
 //dynamic_15 --> md5($u.md5($p).$s)
 static DYNAMIC_primitive_funcp _Funcs_15[] =
 {
-	// MGF_KEYS_CRYPT_IN2
-	DynamicFunc__clean_input,
-	DynamicFunc__append_userid,
-	DynamicFunc__append_from_last_output2_to_input1_as_base16,
-	DynamicFunc__append_salt,
-	DynamicFunc__crypt_md5,
+//#if defined (MMX_COEF)
+//	// -any    Many salts: 3264K Only one salt:  1677K
+//	// -sse2i  Many salts: 3195K Only one salt:  1638K  (md5_asm 1, md5_x2 0  md5_imm 1)
+//  // generic Many salts: 3539K Only one salt:  1843K  (md5_asm 0, md5_x2 1  md5_imm 1)
+//	// MGF_KEYS_CRYPT_IN2
+//	DynamicFunc__clean_input,
+//	DynamicFunc__append_userid,
+//	DynamicFunc__append_from_last_output2_to_input1_as_base16,
+//	DynamicFunc__append_salt,
+//	DynamicFunc__crypt_md5,
+//	NULL
+//#else
+	// -any    Many salts: 3401K Only one salt:  1515K
+	// -sse2i  Many salts: 3412K Only one salt:  1510K  (md5_asm 1, md5_x2 0  md5_imm 1)
+	// generic Many salts: 3688K Only one salt:  1666K  (md5_asm 0, md5_x2 1  md5_imm 1)
+	// MGF_KEYS_BASE16_IN1
+	DynamicFunc__clean_input2,
+	DynamicFunc__append_userid2,
+	DynamicFunc__append_input2_from_input,
+	DynamicFunc__append_salt2,
+	DynamicFunc__crypt_md5_in2_to_out1,
 	NULL
+//#endif
 };
 static struct fmt_tests _Preloads_15[] =
 {
@@ -858,6 +874,83 @@ static struct fmt_tests _Preloads_34[] =
 	{NULL}
 };
 
+/* Request from Dhiru Kholia, July 9, 2012
+  1. SHA-1(ManGOS) = sha1(strtoupper($username).':'.$pass)
+  Works for all private server projects that use the same hashing
+  method: trinity, ascent and others.  (Done, Dyna-35)
+
+  2. SHA-1(ManGOS2) = sha1($username.':'.$pass) # already supported?
+     (Done, Dyna-36)
+
+  3. sha1(strtolower($username).$pass)
+  Example: Admin:6c7ca345f63f835cb353ff15bd6c5e052ec08e7a
+  Used in SMF.
+  Length: 20 bytes.
+
+  4. sha1($salt.sha1($salt.sha1($pass))) # thick format already exits
+  Used in Woltlab BB.
+  Length: 20 bytes.
+*/
+
+//$ ./pass_gen.pl  'dynamic=num=35,format=sha1($u.$c1.$p),usrname=uc,const1=:'
+//dynamic_35 --> sha1(upr($u).:.$p)
+static DYNAMIC_primitive_funcp _Funcs_35[] =
+{
+	//MGF_SHA1_40_BYTE_FINISH
+	//MGF_SALTED ???
+	//MGF_USERNAME_UPCASE
+	DynamicFunc__clean_input,
+	DynamicFunc__append_userid,
+	DynamicFunc__append_input1_from_CONST1,
+	DynamicFunc__append_keys,
+	DynamicFunc__SHA1_crypt_input1_to_output1_FINAL,
+	NULL
+};
+static struct fmt_tests _Preloads_35[] =
+{
+	{"$dynamic_35$a12c6e0d8a4bcabb7f588456cbd20eac3332724d$$UELEV__CHARS","test1"},
+	{"$dynamic_35$9afbe0bf4e1f24e7e2d9df322b3b284037ac6e19$$UU1","thatsworking"},
+	{"$dynamic_35$e01ff7a245202eb8b62a653473f078f6a71b5559$$UNINECHARS","test3"},
+	{"$dynamic_35$a12c6e0d8a4bcabb7f588456cbd20eac3332724d","test1",        {"ELEV__CHARS"}},
+	{"$dynamic_35$9afbe0bf4e1f24e7e2d9df322b3b284037ac6e19","thatsworking", {"U1"}},
+	{"$dynamic_35$e01ff7a245202eb8b62a653473f078f6a71b5559","test3",        {"NINECHARS"}},
+	{NULL}
+};
+static DYNAMIC_Constants _Const_35[] =
+{
+	{1, ":"},
+	{0, NULL}
+};
+
+//$ ./pass_gen.pl  'dynamic=num=36,format=sha1($u.$c1.$p),usrname=true,const1=:'
+//dynamic_36 --> sha1($u.:.$p)
+static DYNAMIC_primitive_funcp _Funcs_36[] =
+{
+	//MGF_SHA1_40_BYTE_FINISH
+	//MGF_USERNAME
+	DynamicFunc__clean_input,
+	DynamicFunc__append_userid,
+	DynamicFunc__append_input1_from_CONST1,
+	DynamicFunc__append_keys,
+	DynamicFunc__SHA1_crypt_input1_to_output1_FINAL,
+	NULL
+};
+static struct fmt_tests _Preloads_36[] =
+{
+	{"$dynamic_36$9de18a2891ab0588a0b69938cda83ed9bdd99c32$$Uu3","test1"},
+	{"$dynamic_36$3549e298740bb9e8148df04f43ba2fb82a052cc4$$UHank","thatsworking"},
+	{"$dynamic_36$11ef4de4baf784d0a1ca33e99a7283ef6b01cdc5$$Usz110","test3"},
+	{"$dynamic_36$9de18a2891ab0588a0b69938cda83ed9bdd99c32","test1",        {"u3"}},
+	{"$dynamic_36$3549e298740bb9e8148df04f43ba2fb82a052cc4","thatsworking", {"Hank"}},
+	{"$dynamic_36$11ef4de4baf784d0a1ca33e99a7283ef6b01cdc5","test3",        {"sz110"}},
+	{NULL}
+};
+static DYNAMIC_Constants _Const_36[] =
+{
+	{1, ":"},
+	{0, NULL}
+};
+
 // Here is a 'dummy' constant array. This will be 'linked' to any dynamic format that does not have any constants.
 static DYNAMIC_Constants _ConstDefault[] =
 {
@@ -891,7 +984,7 @@ static DYNAMIC_Setup Setups[] =
 #else
 	{ "dynamic_14: md5($s.md5($p).$s)",          _Funcs_14,_Preloads_14,_ConstDefault, MGF_SALTED, MGF_KEYS_BASE16_IN1, -11, 55, 80, -24},
 #endif
-	{ "dynamic_15: md5($u.md5($p).$s)",         _Funcs_15,_Preloads_15,_ConstDefault, MGF_SALTED|MGF_USERNAME|MGF_NOTSSE2Safe|MGF_FULL_CLEAN_REQUIRED, MGF_KEYS_CRYPT_IN2, -12, 55, 80 }, // 26 is 12+12+2 so 24+52 'fits
+	{ "dynamic_15: md5($u.md5($p).$s)",         _Funcs_15,_Preloads_15,_ConstDefault, MGF_SALTED|MGF_USERNAME|MGF_NOTSSE2Safe|MGF_FULL_CLEAN_REQUIRED, MGF_KEYS_BASE16_IN1, -12, 55, 80 }, // 26 is 12+12+2 so 24+52 'fits
 	{ "dynamic_16: md5(md5(md5($p).$s).$s2)",   _Funcs_16,_Preloads_16,_ConstDefault, MGF_SALTED|MGF_SALTED2|MGF_NOTSSE2Safe, MGF_KEYS_BASE16_IN1, -23, 55, 80 },
 	{ "dynamic_17: phpass ($P$ or $H$)",        _Funcs_17,_Preloads_17,_ConstDefault, MGF_SALTED|MGF_INPBASE64, MGF_PHPassSetup, 9, 38 },
 	{ "dynamic_18: md5($s.Y.$p.0xF7.$s)(Post.Office MD5)",  _Funcs_18,_Preloads_18,_Const_18,     MGF_SALTED|MGF_NOTSSE2Safe, MGF_POSetup, 32, 32 },
@@ -913,6 +1006,8 @@ static DYNAMIC_Setup Setups[] =
 	{ "dynamic_32: md4($p.$s)",                 _Funcs_32,_Preloads_32,_ConstDefault, MGF_SALTED, MGF_NO_FLAG, -24 },
 	{ "dynamic_33: md4(unicode($p))",           _Funcs_33,_Preloads_33,_ConstDefault, MGF_UTF8, MGF_NO_FLAG, 0, 27, 40 }, // if we are in utf8 mode, we triple this in the init() call
 	{ "dynamic_34: md5(md4($p))",               _Funcs_34,_Preloads_34,_ConstDefault, MGF_NO_FLAG, MGF_KEYS_INPUT|MGF_SET_INP2LEN32 },
+	{ "dynamic_35: sha1($U.:.$p) (ManGOS)",     _Funcs_35,_Preloads_35,_Const_35,     MGF_SHA1_40_BYTE_FINISH|MGF_USERNAME_UPCASE },
+	{ "dynamic_36: sha1($u.:.$p) (ManGOS2)",    _Funcs_36,_Preloads_36,_Const_36,     MGF_SHA1_40_BYTE_FINISH|MGF_USERNAME },
 };
 
 char *dynamic_PRELOAD_SIGNATURE(int cnt)
@@ -972,4 +1067,3 @@ int dynamic_IS_VALID(int i)
 
 	return 1;
 }
-
