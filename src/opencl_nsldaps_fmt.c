@@ -71,7 +71,6 @@ static char *saved_plain;
 static char saved_salt[SALT_SIZE];
 static unsigned int datai[2];
 static int have_full_hashes;
-static size_t global_work_size = SSHA_NUM_KEYS;
 
 static int max_keys_per_crypt = SSHA_NUM_KEYS;
 static void enqueue_obj(cl_command_queue);
@@ -99,6 +98,7 @@ static struct fmt_tests tests[] = {
 	{NULL}
 };
 
+<<<<<<< HEAD
 static void find_best_workgroup(void)
 {
 	cl_event myEvent;
@@ -180,6 +180,8 @@ static void find_best_workgroup(void)
 
 
 
+=======
+>>>>>>> upstream/magnum-jumbo
 static void create_clobj(int kpc){
 	pinned_saved_keys = clCreateBuffer(context[gpu_id], CL_MEM_READ_WRITE | CL_MEM_ALLOC_HOST_PTR, (PLAINTEXT_LENGTH) * kpc, NULL, &ret_code);
 	HANDLE_CLERROR(ret_code, "Error creating page-locked memory pinned_saved_keys");
@@ -275,9 +277,14 @@ static void find_best_kpc(void){
     int i = 0;
     cl_uint *tmpbuffer;
 
+<<<<<<< HEAD
     printf("Calculating best keys per crypt, this will take a while ");
     //for( num=SSHA_NUM_KEYS; num > 4096 ; num -= 16384){
     for( num=local_work_size; num <= SSHA_NUM_KEYS ; num<<=1){
+=======
+    fprintf(stderr, "Calculating best keys per crypt, this will take a while ");
+    for( num=SSHA_NUM_KEYS; num > 4096 ; num -= 16384){
+>>>>>>> upstream/magnum-jumbo
         release_clobj();
 	create_clobj(num);
 	advance_cursor();
@@ -291,7 +298,7 @@ static void find_best_kpc(void){
 	clEnqueueWriteBuffer(queue_prof, buffer_keys, CL_TRUE, 0, (PLAINTEXT_LENGTH) * num, saved_plain, 0, NULL, NULL);
     	ret_code = clEnqueueNDRangeKernel( queue_prof, crypt_kernel, 1, NULL, &global_work_size, &local_work_size, 0, NULL, &myEvent);
 	if(ret_code != CL_SUCCESS){
-		printf("Error %d\n",ret_code);
+		fprintf(stderr, "Error %d\n",ret_code);
 		continue;
 	}
 	clFinish(queue_prof);
@@ -312,7 +319,7 @@ static void find_best_kpc(void){
 	free(tmpbuffer);
 	clReleaseCommandQueue(queue_prof);
     }
-    printf("Optimal keys per crypt %d\n(to avoid this test on next run, put \""
+    fprintf(stderr, "Optimal keys per crypt %d\n(to avoid this test on next run, put \""
            GWS_CONFIG " = %d\" in john.conf, section [" SECTION_OPTIONS
            SUBSECTION_OPENCL "])\n", optimal_kpc, optimal_kpc);
     max_keys_per_crypt = optimal_kpc;
@@ -323,6 +330,9 @@ static void find_best_kpc(void){
 static void fmt_ssha_init(struct fmt_main *pFmt)
 {
 	char *temp;
+
+	global_work_size = MAX_KEYS_PER_CRYPT;
+
 	opencl_init("$JOHN/ssha_kernel.cl", gpu_id, platform_id);
 
 	// create kernel to execute
@@ -338,7 +348,7 @@ static void fmt_ssha_init(struct fmt_main *pFmt)
 
 	if (!local_work_size) {
 		create_clobj(SSHA_NUM_KEYS);
-		find_best_workgroup();
+		opencl_find_best_workgroup(pFmt);
 		release_clobj();
 	}
 
@@ -359,7 +369,7 @@ static void fmt_ssha_init(struct fmt_main *pFmt)
 		create_clobj(SSHA_NUM_KEYS);
 		find_best_kpc();
 	}
-	printf("Local work size (LWS) %d, Global work size (GWS) %d\n",(int)local_work_size, max_keys_per_crypt);
+	fprintf(stderr, "Local work size (LWS) %d, Global work size (GWS) %d\n",(int)local_work_size, max_keys_per_crypt);
 	pFmt->params.max_keys_per_crypt = max_keys_per_crypt;
 }
 
@@ -483,8 +493,13 @@ static void enqueue_obj(cl_command_queue myq){
 	    (PLAINTEXT_LENGTH) * max_keys_per_crypt, saved_plain, 0, NULL, NULL);
 	HANDLE_CLERROR(code, "failed in clEnqueueWriteBuffer saved_plain");
 
+<<<<<<< HEAD
 	code = clEnqueueNDRangeKernel(myq, crypt_kernel, 1, NULL,
 	    &global_work_size, &local_work_size, 0, NULL, NULL);
+=======
+	code = clEnqueueNDRangeKernel(queue[gpu_id], crypt_kernel, 1, NULL,
+	    &global_work_size, &local_work_size, 0, NULL, &profilingEvent);
+>>>>>>> upstream/magnum-jumbo
 	HANDLE_CLERROR(code, "failed in clEnqueueNDRangeKernel");
 
 	HANDLE_CLERROR(clFinish(myq), "clFinish error");

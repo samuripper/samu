@@ -58,7 +58,6 @@ static cl_mem mem_in, mem_out, mem_setting;
 static size_t insize = sizeof(phpass_password) * KEYS_PER_CRYPT;
 static size_t outsize = sizeof(phpass_hash) * KEYS_PER_CRYPT;
 static size_t settingsize = sizeof(uint8_t) * SALT_SIZE + 4;
-static size_t global_work_size = KEYS_PER_CRYPT;
 
 
 static struct fmt_tests tests[] = {
@@ -107,7 +106,7 @@ static void release_all(void)
 static void set_key(char *key, int index)
 {
 #ifdef _PHPASS_DEBUG
-	printf("set_key(%d) = %s\n", index, key);
+	fprintf(stderr, "set_key(%d) = %s\n", index, key);
 #endif
 	int length = strlen(key);
 	inbuffer[index].length = length;
@@ -125,6 +124,9 @@ static char *get_key(int index)
 static void init(struct fmt_main *pFmt)
 {
 	cl_int cl_error;
+
+	global_work_size = MAX_KEYS_PER_CRYPT;
+
 	atexit(release_all);
 	opencl_init("$JOHN/phpass_kernel.cl", gpu_id,platform_id);
 
@@ -240,7 +242,7 @@ static void set_salt(void *salt)
 static void crypt_all(int count)
 {
 #ifdef _PHPASS_DEBUG
-	printf("crypt_all(%d)\n", count);
+	fprintf(stderr, "crypt_all(%d)\n", count);
 #endif
 	///Prepare setting format: salt+prefix+count_log2
 	char setting[SALT_SIZE + 3 + 1] = { 0 };
@@ -256,7 +258,7 @@ static void crypt_all(int count)
 
 	/// Run kernel
 	HANDLE_CLERROR(clEnqueueNDRangeKernel(queue[gpu_id], crypt_kernel, 1,
-		NULL, &global_work_size, &local_work_size, 0, NULL, NULL),
+		NULL, &global_work_size, &local_work_size, 0, NULL, &profilingEvent),
 	    "Run kernel");
 	HANDLE_CLERROR(clFinish(queue[gpu_id]), "clFinish");
 
@@ -271,11 +273,11 @@ static void crypt_all(int count)
 static int binary_hash_0(void *binary)
 {
 #ifdef _PHPASS_DEBUG
-	printf("binary_hash_0 ");
+	fprintf(stderr, "binary_hash_0 ");
 	int i;
 	uint32_t *b = binary;
 	for (i = 0; i < 4; i++)
-		printf("%08x ", b[i]);
+		fprintf(stderr, "%08x ", b[i]);
 	puts("");
 #endif
 	return (((ARCH_WORD_32 *) binary)[0] & 0xf);
@@ -314,10 +316,10 @@ static int binary_hash_6(void *binary)
 static int get_hash_0(int index)
 {
 #ifdef _PHPASS_DEBUG
-	printf("get_hash_0:   ");
+	fprintf(stderr, "get_hash_0:   ");
 	int i;
 	for (i = 0; i < 4; i++)
-		printf("%08x ", outbuffer[index].v[i]);
+		fprintf(stderr, "%08x ", outbuffer[index].v[i]);
 	puts("");
 #endif
 	return outbuffer[index].v[0] & 0xf;

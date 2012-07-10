@@ -111,8 +111,12 @@ static int max_key_length = 0;
 static char get_key_saved[PLAINTEXT_LENGTH+1];
 
 //OpenCL variables
+<<<<<<< HEAD
 static cl_kernel nt_crypt_kernel;
 static cl_mem pinned_saved_keys, pinned_bbbs, buffer_out, buffer_keys, data_info;
+=======
+cl_mem pinned_saved_keys, pinned_bbbs, buffer_out, buffer_keys, data_info;
+>>>>>>> upstream/magnum-jumbo
 
 static unsigned int datai[2];
 size_t global_work_size = NT_NUM_KEYS;
@@ -134,48 +138,12 @@ static void release_all(void)
 	clReleaseMemObject(pinned_bbbs);
 	clReleaseMemObject(pinned_saved_keys);
 
-	clReleaseKernel(nt_crypt_kernel);
+	clReleaseKernel(crypt_kernel);
 	clReleaseProgram(program[gpu_id]);
 	clReleaseCommandQueue(queue[gpu_id]);
 	clReleaseContext(context[gpu_id]);
 }
 
-static void find_best_workgroup(size_t max_group_size) {
-	cl_event myEvent;
-	cl_ulong startTime, endTime, kernelExecTimeNs = CL_ULONG_MAX;
-	size_t my_work_group = 1;
-	cl_int ret_code;
-	int i = 0;
-
-	cl_command_queue queue_prof = clCreateCommandQueue( context[gpu_id], devices[gpu_id], CL_QUEUE_PROFILING_ENABLE, NULL );
-	local_work_size = 1;
-
-	// Set keys
-	for (; i < NT_NUM_KEYS; i++)
-		set_key("aaaaaaaa",i);
-	// Fill params. Copy only necesary data
-	clEnqueueWriteBuffer(queue_prof, data_info, CL_TRUE, 0, sizeof(unsigned int)*2, datai, 0, NULL, NULL);
-	clEnqueueWriteBuffer(queue[gpu_id], buffer_keys, CL_TRUE, 0, 12 * NT_NUM_KEYS, saved_plain, 0, NULL, NULL);
-
-	// Find minimum time
-	for(;my_work_group <= max_group_size; my_work_group*=2){
-		ret_code = clEnqueueNDRangeKernel( queue_prof, nt_crypt_kernel, 1, NULL, &global_work_size, &my_work_group, 0, NULL, &myEvent);
-		if(ret_code != CL_SUCCESS)
-			continue;
-		clFinish(queue_prof);
-
-		clGetEventProfilingInfo(myEvent, CL_PROFILING_COMMAND_START, sizeof(cl_ulong), &startTime, NULL);
-		clGetEventProfilingInfo(myEvent, CL_PROFILING_COMMAND_END  , sizeof(cl_ulong), &endTime  , NULL);
-
-		if((endTime-startTime) < kernelExecTimeNs) {
-			kernelExecTimeNs = endTime-startTime;
-			local_work_size = my_work_group;
-		}
-	}
-	printf("Optimal local work size %d\n",(int)local_work_size);
-	//printf("(to avoid this test on next run do export LWS=%d)\n",(int)local_work_size);
-	clReleaseCommandQueue(queue_prof);
-}
 // TODO: Use concurrent memory copy & execute
 static void nt_crypt_all_opencl(int count)
 {
@@ -190,7 +158,7 @@ static void nt_crypt_all_opencl(int count)
 		"failed in clEnqueWriteBuffer buffer_keys");
 
 	// Execute method
-	clEnqueueNDRangeKernel( queue[gpu_id], nt_crypt_kernel, 1, NULL, &global_work_size, &local_work_size, 0, NULL, NULL);
+	clEnqueueNDRangeKernel( queue[gpu_id], crypt_kernel, 1, NULL, &global_work_size, &local_work_size, 0, NULL, &profilingEvent);
 	clFinish( queue[gpu_id] );
 
 	// Read partial result
@@ -209,7 +177,7 @@ static void fmt_NT_init(struct fmt_main *pFmt){
 	atexit(release_all);
 	opencl_init("$JOHN/nt_kernel.cl", gpu_id, platform_id);
 
-	nt_crypt_kernel = clCreateKernel( program[gpu_id], "nt_crypt", &ret_code );
+	crypt_kernel = clCreateKernel( program[gpu_id], "nt_crypt", &ret_code );
 	HANDLE_CLERROR(ret_code,"Error creating kernel");
 
 	pinned_saved_keys = clCreateBuffer(context[gpu_id], CL_MEM_READ_WRITE | CL_MEM_ALLOC_HOST_PTR, (PLAINTEXT_LENGTH+1)*NT_NUM_KEYS, NULL, &ret_code);
@@ -232,16 +200,16 @@ static void fmt_NT_init(struct fmt_main *pFmt){
 	HANDLE_CLERROR(ret_code, "Error creating data_info out argument");
 
 	argIndex = 0;
-	HANDLE_CLERROR(clSetKernelArg(nt_crypt_kernel, argIndex++, sizeof(data_info), (void *) &data_info),
+	HANDLE_CLERROR(clSetKernelArg(crypt_kernel, argIndex++, sizeof(data_info), (void *) &data_info),
 		"Error setting argument 0");
-	HANDLE_CLERROR(clSetKernelArg(nt_crypt_kernel, argIndex++, sizeof(buffer_keys), (void*) &buffer_keys),
+	HANDLE_CLERROR(clSetKernelArg(crypt_kernel, argIndex++, sizeof(buffer_keys), (void*) &buffer_keys),
 		"Error setting argument 1");
-	HANDLE_CLERROR(clSetKernelArg(nt_crypt_kernel, argIndex++, sizeof(buffer_out ), (void*) &buffer_out ),
+	HANDLE_CLERROR(clSetKernelArg(crypt_kernel, argIndex++, sizeof(buffer_out ), (void*) &buffer_out ),
 		"Error setting argument 2");
 	datai[0] = PLAINTEXT_LENGTH;
 	datai[1] = max_keys_per_crypt;
 
-	find_best_workgroup(max_group_size);
+	opencl_find_best_workgroup(pFmt);
 }
 
 static char * nt_split(char *ciphertext, int index)
@@ -377,7 +345,7 @@ static int cmp_one(void * binary, int index)
 		return 0;
         */
 	/* never reached
-        printf("reached\n");
+        fprintf(stderr, "reached\n");
 	b += SQRT_3;b = (b << 15) | (b >> 17);
 
 	a += (b ^ c ^ d) + buffer[pos1] + SQRT_3; a = (a << 3 ) | (a >> 29);

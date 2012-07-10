@@ -1,22 +1,12 @@
-/* Password Safe cracker patch for JtR. Hacked together during May of
- * 2012 by Dhiru Kholia <dhiru.kholia at gmail.com>.
+/* Password Safe and Password Gorilla cracker patch for JtR. Hacked together
+ * during May of 2012 by Dhiru Kholia <dhiru.kholia at gmail.com>.
  *
  * This software is Copyright © 2012, Dhiru Kholia <dhiru.kholia at gmail.com>,
  * and it is hereby released to the general public under the following terms:
  * Redistribution and use in source and binary forms, with or without modification,
  * are permitted. */
 
-#include <openssl/opensslv.h>
-#if OPENSSL_VERSION_NUMBER >= 0x00908000
-
-#if defined(__APPLE__) && defined(__MACH__) && \
-	defined(__MAC_OS_X_VERSION_MIN_REQUIRED) && \
-	__MAC_OS_X_VERSION_MIN_REQUIRED >= 1070
-#define COMMON_DIGEST_FOR_OPENSSL
-#include <CommonCrypto/CommonDigest.h>
-#else
-#include <openssl/sha.h>
-#endif
+#include "sha2.h"
 
 #include <string.h>
 #include <assert.h>
@@ -36,7 +26,7 @@ static int omp_t = 1;
 
 #define FORMAT_LABEL		"pwsafe"
 #define FORMAT_NAME		"Password Safe SHA-256"
-#define ALGORITHM_NAME		"32/" ARCH_BITS_STR
+#define ALGORITHM_NAME		"32/" ARCH_BITS_STR " " SHA2_LIB
 #define BENCHMARK_COMMENT	""
 #define BENCHMARK_LENGTH	-1
 #define PLAINTEXT_LENGTH	32
@@ -248,8 +238,3 @@ struct fmt_main pwsafe_fmt = {
 		cmp_exact
 	}
 };
-#else
-#ifdef __GNUC__
-#warning Note: pwsafe format disabled - it needs OpenSSL 0.9.8 or above
-#endif
-#endif

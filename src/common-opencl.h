@@ -19,7 +19,7 @@
 #define MAXGPUS	8
 #define MAX_PLATFORMS	8
 #define SUBSECTION_OPENCL	":OpenCL"
-#define MAX_OCLINFO_STRING_LEN	64
+#define MAX_OCLINFO_STRING_LEN	2048
 
 /* Comment if you do not want to see OpenCL warnings during kernel compilation */
 #define REPORT_OPENCL_WARNINGS
@@ -35,6 +35,7 @@ cl_int ret_code;
 cl_kernel crypt_kernel;
 cl_event profilingEvent;
 size_t local_work_size;
+size_t global_work_size;
 size_t max_group_size;
 
 int device_info[MAXGPUS];
@@ -45,9 +46,11 @@ cl_int oclGetDevCap(cl_device_id device, cl_int *iComputeCapMajor, cl_int *iComp
 void opencl_init_dev(unsigned int dev_id, unsigned int platform_id);
 void opencl_init(char *kernel_filename, unsigned int dev_id,
                  unsigned int platform_id);
+void opencl_init_from_binary(char *kernel_filename, unsigned int dev_id,
+                 unsigned int platform_id);
 void opencl_build_kernel(char *kernel_filename, unsigned int dev_id);
 void opencl_find_best_workgroup(struct fmt_main *pFmt);
-
+void opencl_find_best_workgroup_limit(struct fmt_main *pFmt, size_t group_size_limit);
 
 cl_device_type get_device_type(int dev_id);
 cl_ulong get_local_memory_size(int dev_id);
@@ -57,6 +60,8 @@ cl_uint get_max_compute_units(int dev_id);
 cl_uint get_processors_count(int dev_id);
 cl_uint get_processor_family(int dev_id);
 int get_vendor_id(int dev_id);
+int get_device_version(int dev_id);
+int get_byte_addressable(int dev_id);
 
 #define UNKNOWN                 0
 #define CPU                     1
@@ -68,6 +73,7 @@ int get_vendor_id(int dev_id);
 #define AMD_GCN                 1024
 #define AMD_VLIW4               2048
 #define AMD_VLIW5               4096
+#define NO_BYTE_ADDRESSABLE     8192
 
 #define cpu(n)                  ((n & CPU) == (CPU))
 #define gpu(n)                  ((n & GPU) == (GPU))
@@ -79,6 +85,7 @@ int get_vendor_id(int dev_id);
 #define amd_gcn(n)              ((n & AMD_GCN) && gpu_amd(n))
 #define amd_vliw4(n)            ((n & AMD_VLIW4) && gpu_amd(n))
 #define amd_vliw5(n)            ((n & AMD_VLIW5) && gpu_amd(n))
+#define no_byte_addressable(n)  (n & NO_BYTE_ADDRESSABLE)
 
 char *get_error_name(cl_int cl_error);
 

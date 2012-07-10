@@ -91,20 +91,10 @@ JOHN_OBJS = \
 	rc4.o \
 	hmacmd5.o \
 	base64.o \
-	md4.o \
+	md4.o sha2.o \
 	dynamic_fmt.o dynamic_parser.o dynamic_preloads.o dynamic_utils.o \
-	rawSHA224_fmt.o rawSHA256_fmt.o rawSHA384_fmt.o rawSHA512_fmt.o \
 	hmacMD5_fmt.o hmacSHA1_fmt.o \
-	hmacSHA224_fmt.o hmacSHA256_fmt.o hmacSHA384_fmt.o hmacSHA512_fmt.o \
-	episerver_fmt.o keepass_fmt.o pwsafe_fmt.o \
-	XSHA512_fmt.o \
-	hmailserver_fmt.o \
-	dragonfly3_fmt.o \
-	dragonfly4_fmt.o \
-	drupal7_fmt.o \
 	django_fmt.o \
-	cryptsha256_fmt.o cryptsha512_fmt.o \
-	SybaseASE_fmt.o \
 	SKEY_fmt.o \
 	ssh_fmt.o ssh2john.o \
 	pfx_fmt.o pfx2john.o \
@@ -140,8 +130,8 @@ OCL_OBJS = \
 	opencl_cryptmd5_fmt.o opencl_phpass_fmt.o opencl_rawsha1_fmt.o \
 	opencl_nt_fmt.o opencl_rawmd5_fmt.o opencl_nsldaps_fmt.o \
 	opencl_cryptsha512_fmt.o opencl_mscash2_fmt.o opencl_wpapsk_fmt.o \
-	opencl_xsha512_fmt.o opencl_rawsha512_fmt.o opencl_bf_std.o opencl_bf_fmt.o \
-	opencl_pwsafe_fmt.o
+	opencl_xsha512_fmt.o opencl_rawsha512_fmt.o opencl_bf_std.o \
+	opencl_bf_fmt.o opencl_pwsafe_fmt.o opencl_rawmd4_fmt.o
 
 CUDA_OBJS = \
 	cuda_common.o \
@@ -1388,6 +1378,11 @@ testpara:
 	perl ./para-best.pl "$(CC)" "$(MAKE)" \
 		"$(BENCH_PARA_DEPEND)" "-msse2" 64
 
+testpara-native:
+	$(LN) x86-64.h arch.h
+	perl ./para-best.pl "$(CC)" "$(MAKE)" \
+		"$(BENCH_PARA_DEPEND)" "-march=native" 64
+
 testpara32:
 	$(LN) x86-sse.h arch.h
 	CFLAGS="$(CFLAGS) -m32 -msse2" \
@@ -1404,92 +1399,79 @@ para-bench32: $(PARA_BENCH_32_OBJS)
 	$(LD) $(PARA_BENCH_32_OBJS) $(LDFLAGS) -o para-bench
 
 cuda_common.o:	cuda/cuda_common.cuh cuda/cuda_common.cu
-	cd cuda; nvcc $(NVCC_FLAGS) cuda_common.cu
-	mv cuda/cuda_common.o cuda_common.o
+	cd cuda; nvcc $(NVCC_FLAGS) cuda_common.cu -o ../cuda_common.o
 
 cuda_cryptmd5.o:  cuda_cryptmd5.h cuda/cryptmd5.cu cuda_common.o
-	cd cuda; nvcc $(NVCC_FLAGS) cryptmd5.cu
-	mv cuda/cryptmd5.o cuda_cryptmd5.o
+	cd cuda; nvcc $(NVCC_FLAGS) cryptmd5.cu -o ../cuda_cryptmd5.o
 
 cuda_cryptmd5_fmt.o: cuda_cryptmd5.o cuda_cryptmd5_fmt.c
-	$(CC)  $(CFLAGS) cuda_cryptmd5_fmt.c
+	$(CC)  $(CFLAGS) cuda_cryptmd5_fmt.c -o cuda_cryptmd5_fmt.o
 
 cuda_phpass.o:  cuda_phpass.h cuda/phpass.cu cuda_common.o
-	cd cuda; nvcc $(NVCC_FLAGS) phpass.cu
-	mv cuda/phpass.o cuda_phpass.o
+	cd cuda; nvcc $(NVCC_FLAGS) phpass.cu -o ../cuda_phpass.o
 
 cuda_phpass_fmt.o: cuda_phpass.o cuda_phpass_fmt.c
-	$(CC)  $(CFLAGS) cuda_phpass_fmt.c
+	$(CC)  $(CFLAGS) cuda_phpass_fmt.c -o cuda_phpass_fmt.o
 
 cuda_cryptsha256.o:  cuda_cryptsha256.h cuda/cryptsha256.cu cuda_common.o
-	cd cuda; nvcc $(NVCC_FLAGS) cryptsha256.cu
-	mv cuda/cryptsha256.o cuda_cryptsha256.o
+	cd cuda; nvcc $(NVCC_FLAGS) cryptsha256.cu -o ../cuda_cryptsha256.o
 
 cuda_cryptsha256_fmt.o: cuda_cryptsha256.o cuda_cryptsha256_fmt.c
-	$(CC)  $(CFLAGS) cuda_cryptsha256_fmt.c
+	$(CC)  $(CFLAGS) cuda_cryptsha256_fmt.c -o cuda_cryptsha256_fmt.o
 
 cuda_cryptsha512.o:  cuda_cryptsha512.h cuda/cryptsha512.cu cuda_common.o
-	cd cuda; nvcc $(NVCC_FLAGS) cryptsha512.cu
-	mv cuda/cryptsha512.o cuda_cryptsha512.o
+	cd cuda; nvcc $(NVCC_FLAGS) cryptsha512.cu -o ../cuda_cryptsha512.o
 
 cuda_cryptsha512_fmt.o: cuda_cryptsha512.o cuda_cryptsha512_fmt.c
-	$(CC)  $(CFLAGS) cuda_cryptsha512_fmt.c
+	$(CC)  $(CFLAGS) cuda_cryptsha512_fmt.c -o cuda_cryptsha512_fmt.o
 
 cuda_mscash2.o:  cuda_mscash2.h cuda/mscash2.cu cuda_common.o
-	cd cuda; nvcc $(NVCC_FLAGS) mscash2.cu
-	mv cuda/mscash2.o cuda_mscash2.o
+	cd cuda; nvcc $(NVCC_FLAGS) mscash2.cu -o ../cuda_mscash2.o
 
 cuda_mscash2_fmt.o: cuda_mscash2.o cuda_mscash2_fmt.c
-	$(CC)  $(CFLAGS) cuda_mscash2_fmt.c
+	$(CC)  $(CFLAGS) cuda_mscash2_fmt.c -o cuda_mscash2_fmt.o
 
 cuda_mscash.o:  cuda_mscash.h cuda/mscash.cu cuda_common.o
-	cd cuda; nvcc $(NVCC_FLAGS) mscash.cu
-	mv cuda/mscash.o cuda_mscash.o
+	cd cuda; nvcc $(NVCC_FLAGS) mscash.cu -o ../cuda_mscash.o
 
 cuda_mscash_fmt.o: cuda_mscash.o cuda_mscash_fmt.c
-	$(CC)  $(CFLAGS) cuda_mscash_fmt.c
+	$(CC)  $(CFLAGS) cuda_mscash_fmt.c -o cuda_mscash_fmt.o
 
 cuda_rawsha256.o:  cuda_rawsha256.h cuda/rawsha256.cu cuda_common.o
-	cd cuda; nvcc $(NVCC_FLAGS) -DSHA256 rawsha256.cu -o rawsha256.o
-	mv cuda/rawsha256.o cuda_rawsha256.o
+	cd cuda; nvcc $(NVCC_FLAGS) -DSHA256 rawsha256.cu -o ../cuda_rawsha256.o
 
 cuda_rawsha256_fmt.o: cuda_rawsha256.o cuda_rawsha256_fmt.c
-	$(CC)  $(CFLAGS) -DSHA256 cuda_rawsha256_fmt.c
+	$(CC)  $(CFLAGS) -DSHA256 cuda_rawsha256_fmt.c -o cuda_rawsha256_fmt.o
 
 cuda_rawsha224.o:  cuda_rawsha256.h cuda/rawsha256.cu cuda_common.o
-	cd cuda; nvcc $(NVCC_FLAGS) -DSHA224 rawsha256.cu -o rawsha224.o
-	mv cuda/rawsha224.o cuda_rawsha224.o
+	cd cuda; nvcc $(NVCC_FLAGS) -DSHA224 rawsha256.cu -o ../cuda_rawsha224.o
 
 cuda_rawsha224_fmt.o: cuda_rawsha224.o cuda_rawsha256_fmt.c
 	$(CC)  $(CFLAGS) -DSHA224 cuda_rawsha256_fmt.c -o cuda_rawsha224_fmt.o
 
 cuda_xsha512.o: cuda_xsha512.h cuda/xsha512.cu cuda_common.o
-	cd cuda; nvcc $(NVCC_FLAGS) xsha512.cu
-	mv cuda/xsha512.o cuda_xsha512.o
+	cd cuda; nvcc $(NVCC_FLAGS) xsha512.cu -o ../cuda_xsha512.o
 
 cuda_xsha512_fmt.o: cuda_xsha512.o cuda_xsha512_fmt.c
 	$(CC) $(CFLAGS) cuda_xsha512_fmt.c -o cuda_xsha512_fmt.o
 
 cuda_wpapsk.o:  cuda/wpapsk.cu cuda_common.o
-	cd cuda; nvcc $(NVCC_FLAGS) wpapsk.cu
-	mv cuda/wpapsk.o cuda_wpapsk.o
+	cd cuda; nvcc $(NVCC_FLAGS) wpapsk.cu -o ../cuda_wpapsk.o
 
 cuda_wpapsk_fmt.o: cuda_wpapsk.o cuda_wpapsk_fmt.c
-	$(CC)  $(CFLAGS) cuda_wpapsk_fmt.c
+	$(CC)  $(CFLAGS) cuda_wpapsk_fmt.c -o cuda_wpapsk_fmt.o
 
 cuda_rawsha512.o: cuda_rawsha512.h cuda/rawsha512.cu cuda_common.o
-	cd cuda; nvcc $(NVCC_FLAGS) rawsha512.cu
-	mv cuda/rawsha512.o cuda_rawsha512.o
+	cd cuda; nvcc $(NVCC_FLAGS) rawsha512.cu -o ../cuda_rawsha512.o
 
 cuda_rawsha512_fmt.o: cuda_rawsha512.o cuda_rawsha512_fmt.c
 	$(CC) $(CFLAGS) cuda_rawsha512_fmt.c -o cuda_rawsha512_fmt.o
 
 cuda_pwsafe.o: cuda/pwsafe.cu cuda_common.o
-	cd cuda; nvcc $(NVCC_FLAGS) pwsafe.cu
-	mv cuda/pwsafe.o cuda_pwsafe.o
+	cd cuda; nvcc $(NVCC_FLAGS) pwsafe.cu -o ../cuda_pwsafe.o
 
 cuda_pwsafe_fmt.o: cuda_pwsafe.o cuda_pwsafe_fmt.c
-	$(CC)  $(CFLAGS) cuda_pwsafe_fmt.c
+	$(CC)  $(CFLAGS) cuda_pwsafe_fmt.c -o cuda_pwsafe_fmt.o
 
 ../run/john: $(JOHN_OBJS)
 	$(LD) $(JOHN_OBJS) $(LDFLAGS) -o ../run/john

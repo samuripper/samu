@@ -151,7 +151,6 @@ static rarfile *cur_file;
 #ifdef CL_VERSION_1_0
 /* Determines when to use CPU instead (eg. Single mode, few keys in a call) */
 #define CPU_GPU_RATIO		32
-static size_t global_work_size = 0;
 static cl_mem cl_saved_key, cl_saved_len, cl_salt, cl_aes_key, cl_aes_iv;
 #endif
 
@@ -428,7 +427,7 @@ static void find_best_gws(int do_benchmark)
 	cl_ulong run_time, min_time = CL_ULONG_MAX;
 	unsigned int SHAspeed, bestSHAspeed = 0;
 	int optimal_gws = local_work_size;
-	const int sha1perkey = (strlen(rar_fmt.params.tests[0].plaintext) * 2 + 8 + 3) * (0x40000 + 16) / 64;
+	const int sha1perkey = (strlen(rar_fmt.params.tests[0].plaintext) * 2 + 8 + 3) * 0x40000 / 64 + 16;
 
 #ifndef DEBUG
 	if (do_benchmark)
@@ -580,6 +579,8 @@ static void init(struct fmt_main *pFmt)
 #ifdef CL_VERSION_1_0
 	char *temp;
 	cl_ulong maxsize;
+
+	global_work_size = 0;
 
 	opencl_init("$JOHN/rar_kernel.cl", gpu_id, platform_id);
 
