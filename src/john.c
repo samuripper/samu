@@ -206,6 +206,7 @@ static void john_register_all(void)
 	john_register_one(&fmt_AFS);
 	john_register_one(&fmt_LM);
 
+/*
 	for (i = 0; i < cnt; ++i)
 		john_register_one(&(pFmts[i]));
 
@@ -244,7 +245,7 @@ static void john_register_all(void)
 #endif
 	john_register_one(&zip_fmt);
 	john_register_one(&fmt_dummy);
-
+*/
 #ifdef CL_VERSION_1_0
 	john_register_one(&fmt_opencl_NSLDAPS);
 	john_register_one(&fmt_opencl_rawMD4);
@@ -548,6 +549,7 @@ static void john_list_method_names()
 
 static void john_init(char *name, int argc, char **argv)
 {
+	int show_usage = 0;
 	int make_check = (argc == 2 && !strcmp(argv[1], "--make_check"));
 	if (make_check)
 		argv[1] = "--test=0";
@@ -555,9 +557,16 @@ static void john_init(char *name, int argc, char **argv)
 	CPU_detect_or_fallback(argv, make_check);
 
 	status_init(NULL, 1);
-	if (argc < 2)
+	if (argc < 2 ||
+            (argc == 2 &&
+             (!strcasecmp(argv[1], "--help") ||
+              !strcasecmp(argv[1], "-h") ||
+              !strcasecmp(argv[1], "-help"))))
+	{
 		john_register_all(); /* for printing by opt_init() */
-	opt_init(name, argc, argv);
+		show_usage = 1;
+	}
+	opt_init(name, argc, argv, show_usage);
 
 	/*
 	 * --list=? needs to be supported, because it has been supported in the released
@@ -594,6 +603,8 @@ static void john_init(char *name, int argc, char **argv)
 	}
 	if (options.listconf && !strcasecmp(options.listconf, "hidden-options"))
 	{
+		puts("--help                    print usage summary, just like running the command");
+		puts("                          without any parameters");
 		puts("--subformat=FORMAT        pick a benchmark format for --format=crypt");
 		puts("--mkpc=N                  force a lower max. keys per crypt");
 		puts("--length=N                force a lower max. length");
@@ -855,7 +866,7 @@ static void john_init(char *name, int argc, char **argv)
 				// dynamic will alway set params.salt_size to 0 or sizeof a pointer.
 				printf("Salt size                       \t%d\n", dynamic_real_salt_length(format));
 			} else
-			printf("Salt size                       \t%d\n", format->params.salt_size);
+				printf("Salt size                       \t%d\n", format->params.salt_size);
 			printf("\n");
 		} while ((format = format->next));
 		exit(0);

@@ -98,6 +98,88 @@ static struct fmt_tests tests[] = {
 	{NULL}
 };
 
+<<<<<<< HEAD
+=======
+static void find_best_workgroup(void)
+{
+	cl_event myEvent;
+	cl_ulong startTime, endTime, kernelExecTimeNs = CL_ULONG_MAX;
+	size_t my_work_group = 1;
+	cl_int ret_code;
+	int i = 0;
+	size_t max_group_size, best_multiple;
+
+	clGetDeviceInfo(devices[gpu_id], CL_DEVICE_MAX_WORK_GROUP_SIZE,
+	    sizeof(max_group_size), &max_group_size, NULL);
+	queue_prof =
+	    clCreateCommandQueue(context[gpu_id], devices[gpu_id],
+	    CL_QUEUE_PROFILING_ENABLE, &ret_code);
+	printf("Max local work size %d ", (int) max_group_size);
+	local_work_size = 1;
+
+	// Set keys
+	for (; i < SSHA_NUM_KEYS; i++) {
+		memcpy(&(saved_plain[i * PLAINTEXT_LENGTH]), "igottago", PLAINTEXT_LENGTH);
+	}
+	clEnqueueWriteBuffer(queue_prof, data_info, CL_TRUE, 0,
+	    sizeof(unsigned int) * 2, datai, 0, NULL, NULL);
+	clEnqueueWriteBuffer(queue_prof, mysalt, CL_TRUE, 0, SALT_SIZE,
+	    saved_salt, 0, NULL, NULL);
+	clEnqueueWriteBuffer(queue_prof, buffer_keys, CL_TRUE, 0,
+	    (PLAINTEXT_LENGTH) * SSHA_NUM_KEYS, saved_plain, 0, NULL, NULL);
+
+
+ 	// This is OpenCL 1.1, we catch CL_INVALID_VALUE and use a fallback
+	ret_code = clGetKernelWorkGroupInfo (crypt_kernel, devices[gpu_id],
+		CL_KERNEL_PREFERRED_WORK_GROUP_SIZE_MULTIPLE,
+		sizeof(best_multiple), &best_multiple, NULL);
+
+	if (ret_code == CL_INVALID_VALUE) {
+		//printf("Can't get preferred LWS multiple, using 1\n");
+		best_multiple = 1;
+	} else {
+		HANDLE_CLERROR(ret_code, "Query preferred work group multiple");
+		//printf("preferred multiple: %zu\n", best_multiple);
+	}
+
+	// Find minimum time
+	//for (my_work_group = 1; (int) my_work_group <= (int) max_group_size;
+	//    my_work_group *= 2) {
+  	// Find minimum time
+ 	for (my_work_group = best_multiple; (int) my_work_group <= (int) max_group_size;
+  	    my_work_group *= 2) {
+		ret_code = clEnqueueNDRangeKernel(queue_prof, crypt_kernel, 1,
+		    NULL, &global_work_size, &my_work_group, 0, NULL, &myEvent);
+		if (ret_code != CL_SUCCESS) {
+			printf("Error %d\n", ret_code);
+			continue;
+		}
+		clFinish(queue_prof);
+
+		clGetEventProfilingInfo(myEvent, CL_PROFILING_COMMAND_SUBMIT,
+		    sizeof(cl_ulong), &startTime, NULL);
+		clGetEventProfilingInfo(myEvent, CL_PROFILING_COMMAND_END,
+		    sizeof(cl_ulong), &endTime, NULL);
+
+		if ((endTime - startTime) < kernelExecTimeNs) {
+			kernelExecTimeNs = endTime - startTime;
+			local_work_size = my_work_group;
+		}
+		#ifdef DEBUG
+		printf("\nlws %04d time=%10d",(int) my_work_group, endTime-startTime);
+		#endif
+	}
+	#ifdef DEBUG
+	printf("\n");
+	#endif
+	printf("Optimal local work size %d\n",(int)local_work_size);
+	printf("(to avoid this test on next run, put \""
+           LWS_CONFIG " = %d\" in john.conf, section [" SECTION_OPTIONS
+           SUBSECTION_OPENCL "])\n", (int)local_work_size);
+	clReleaseCommandQueue(queue_prof);
+}
+
+>>>>>>> origin/magnum-jumbo
 static void create_clobj(int kpc){
 	pinned_saved_keys = clCreateBuffer(context[gpu_id], CL_MEM_READ_WRITE | CL_MEM_ALLOC_HOST_PTR, (PLAINTEXT_LENGTH) * kpc, NULL, &ret_code);
 	HANDLE_CLERROR(ret_code, "Error creating page-locked memory");
@@ -193,8 +275,14 @@ static void find_best_kpc(void){
     int i = 0;
     cl_uint *tmpbuffer;
 
+<<<<<<< HEAD
     fprintf(stderr, "Calculating best keys per crypt, this will take a while ");
     for( num=SSHA_NUM_KEYS; num > 4096 ; num -= 16384){
+=======
+    printf("Calculating best keys per crypt, this will take a while ");
+    //for( num=SSHA_NUM_KEYS; num > 4096 ; num -= 16384){
+    for( num=local_work_size; num <= SSHA_NUM_KEYS ; num<<=1){
+>>>>>>> origin/magnum-jumbo
         release_clobj();
 	create_clobj(num);
 	advance_cursor();
@@ -394,8 +482,13 @@ static void crypt_all(int count)
 	    (PLAINTEXT_LENGTH) * max_keys_per_crypt, saved_plain, 0, NULL, NULL);
 	HANDLE_CLERROR(code, "failed in clEnqueueWriteBuffer saved_plain");
 
+<<<<<<< HEAD
 	code = clEnqueueNDRangeKernel(queue[gpu_id], crypt_kernel, 1, NULL,
 	    &global_work_size, &local_work_size, 0, NULL, &profilingEvent);
+=======
+	code = clEnqueueNDRangeKernel(myq, crypt_kernel, 1, NULL,
+	    &global_work_size, &local_work_size, 0, NULL, NULL);
+>>>>>>> origin/magnum-jumbo
 	HANDLE_CLERROR(code, "failed in clEnqueueNDRangeKernel");
 
 	HANDLE_CLERROR(clFinish(queue[gpu_id]), "clFinish error");
@@ -452,5 +545,10 @@ struct fmt_main fmt_opencl_NSLDAPS = {
 		    },
 		    cmp_all,
 		    cmp_one,
+<<<<<<< HEAD
 	    cmp_exact}
+=======
+		    cmp_exact
+	}
+>>>>>>> origin/magnum-jumbo
 };
