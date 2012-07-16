@@ -98,7 +98,6 @@ static struct fmt_tests tests[] = {
 	{NULL}
 };
 
-<<<<<<< HEAD
 static void find_best_workgroup(void)
 {
 	cl_event myEvent;
@@ -178,10 +177,6 @@ static void find_best_workgroup(void)
 	clReleaseCommandQueue(queue_prof);
 }
 
-
-
-=======
->>>>>>> upstream/magnum-jumbo
 static void create_clobj(int kpc){
 	pinned_saved_keys = clCreateBuffer(context[gpu_id], CL_MEM_READ_WRITE | CL_MEM_ALLOC_HOST_PTR, (PLAINTEXT_LENGTH) * kpc, NULL, &ret_code);
 	HANDLE_CLERROR(ret_code, "Error creating page-locked memory pinned_saved_keys");
@@ -277,14 +272,9 @@ static void find_best_kpc(void){
     int i = 0;
     cl_uint *tmpbuffer;
 
-<<<<<<< HEAD
     printf("Calculating best keys per crypt, this will take a while ");
     //for( num=SSHA_NUM_KEYS; num > 4096 ; num -= 16384){
     for( num=local_work_size; num <= SSHA_NUM_KEYS ; num<<=1){
-=======
-    fprintf(stderr, "Calculating best keys per crypt, this will take a while ");
-    for( num=SSHA_NUM_KEYS; num > 4096 ; num -= 16384){
->>>>>>> upstream/magnum-jumbo
         release_clobj();
 	create_clobj(num);
 	advance_cursor();
@@ -493,13 +483,8 @@ static void enqueue_obj(cl_command_queue myq){
 	    (PLAINTEXT_LENGTH) * max_keys_per_crypt, saved_plain, 0, NULL, NULL);
 	HANDLE_CLERROR(code, "failed in clEnqueueWriteBuffer saved_plain");
 
-<<<<<<< HEAD
 	code = clEnqueueNDRangeKernel(myq, crypt_kernel, 1, NULL,
 	    &global_work_size, &local_work_size, 0, NULL, NULL);
-=======
-	code = clEnqueueNDRangeKernel(queue[gpu_id], crypt_kernel, 1, NULL,
-	    &global_work_size, &local_work_size, 0, NULL, &profilingEvent);
->>>>>>> upstream/magnum-jumbo
 	HANDLE_CLERROR(code, "failed in clEnqueueNDRangeKernel");
 
 	HANDLE_CLERROR(clFinish(myq), "clFinish error");
