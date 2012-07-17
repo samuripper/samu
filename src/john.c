@@ -247,14 +247,13 @@ static void john_register_all(void)
 	john_register_one(&fmt_dummy);
 */
 #ifdef CL_VERSION_1_0
-	john_register_one(&fmt_opencl_NSLDAPS);
+	//john_register_one(&fmt_opencl_cryptMD5);
+	john_register_one(&fmt_opencl_mysqlsha1);
 	john_register_one(&fmt_opencl_rawMD4);
 	john_register_one(&fmt_opencl_rawMD5);
 	john_register_one(&fmt_opencl_NT);
 	john_register_one(&fmt_opencl_rawSHA1);
-	john_register_one(&fmt_opencl_cryptMD5);
 	john_register_one(&fmt_opencl_phpass);
-	john_register_one(&fmt_opencl_mysqlsha1);
 	john_register_one(&fmt_opencl_cryptsha512);
 	john_register_one(&fmt_opencl_mscash2);
 	john_register_one(&fmt_opencl_wpapsk);
@@ -262,6 +261,7 @@ static void john_register_all(void)
 	john_register_one(&fmt_opencl_rawsha512);
 	john_register_one(&fmt_opencl_bf);
 	john_register_one(&fmt_opencl_pwsafe);
+	john_register_one(&fmt_opencl_NSLDAPS);
 #endif
 
 #ifdef HAVE_CUDA
