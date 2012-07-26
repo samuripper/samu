@@ -207,7 +207,6 @@ static void john_register_all(void)
 	john_register_one(&fmt_AFS);
 	john_register_one(&fmt_LM);
 
-/*
 	for (i = 0; i < cnt; ++i)
 		john_register_one(&(pFmts[i]));
 
@@ -246,7 +245,6 @@ static void john_register_all(void)
 #endif
 	john_register_one(&zip_fmt);
 	john_register_one(&fmt_dummy);
-*/
 #ifdef CL_VERSION_1_0
 	//john_register_one(&fmt_opencl_cryptMD5);
 	john_register_one(&fmt_opencl_mysqlsha1);
