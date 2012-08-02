@@ -5,6 +5,7 @@
 # ...with changes in the jumbo patch, by various authors
 #
 
+##o
 CC = gcc
 AS = $(CC)
 LD = $(CC)
