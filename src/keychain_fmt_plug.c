@@ -18,7 +18,7 @@
 #include "formats.h"
 #include "params.h"
 #include "options.h"
-#include "gladman_fileenc.h"
+#include "keychain.h"
 #include <openssl/des.h>
 #ifdef _OPENMP
 #include <omp.h>
@@ -30,7 +30,7 @@
 #define ALGORITHM_NAME		"32/" ARCH_BITS_STR
 #define BENCHMARK_COMMENT	""
 #define BENCHMARK_LENGTH	-1
-#define PLAINTEXT_LENGTH	32
+#define PLAINTEXT_LENGTH	15
 #define BINARY_SIZE		16
 #define SALT_SIZE		sizeof(*salt_struct)
 #define MIN_KEYS_PER_CRYPT	1
@@ -57,22 +57,22 @@ static struct custom_salt {
 	unsigned char ct[CTLEN];
 } *salt_struct;
 
-static void init(struct fmt_main *pFmt)
+static void init(struct fmt_main *self)
 {
 
 #if defined (_OPENMP)
 	omp_t = omp_get_max_threads();
-	pFmt->params.min_keys_per_crypt *= omp_t;
+	self->params.min_keys_per_crypt *= omp_t;
 	omp_t *= OMP_SCALE;
-	pFmt->params.max_keys_per_crypt *= omp_t;
+	self->params.max_keys_per_crypt *= omp_t;
 #endif
 	saved_key = mem_calloc_tiny(sizeof(*saved_key) *
-			pFmt->params.max_keys_per_crypt, MEM_ALIGN_NONE);
+			self->params.max_keys_per_crypt, MEM_ALIGN_NONE);
 	cracked = mem_calloc_tiny(sizeof(*cracked) *
-			pFmt->params.max_keys_per_crypt, MEM_ALIGN_WORD);
+			self->params.max_keys_per_crypt, MEM_ALIGN_WORD);
 }
 
-static int valid(char *ciphertext, struct fmt_main *pFmt)
+static int valid(char *ciphertext, struct fmt_main *self)
 {
 	return !strncmp(ciphertext, "$keychain$", 10);
 }
@@ -149,9 +149,9 @@ static void crypt_all(int count)
 	for (index = 0; index < count; index++)
 #endif
 	{
-		unsigned char master[24];
-		derive_key((unsigned char *)saved_key[index],  strlen(saved_key[index]), salt_struct->salt, SALTLEN, 1000, master, 24);
-		if(kcdecrypt(master, salt_struct->iv, salt_struct->ct) == 0)
+		unsigned int master[8];
+		pbkdf2((unsigned char *)saved_key[index],  strlen(saved_key[index]), salt_struct->salt, SALTLEN, 1000, master);
+		if(kcdecrypt((unsigned char*)master, salt_struct->iv, salt_struct->ct) == 0)
 			cracked[index] = 1;
 		else
 			cracked[index] = 0;

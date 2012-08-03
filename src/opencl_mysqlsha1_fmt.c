@@ -157,7 +157,7 @@ static void find_best_kpc(void){
     create_clobj(optimal_kpc);
 }
 
-static int valid(char *ciphertext, struct fmt_main *pFmt){
+static int valid(char *ciphertext, struct fmt_main *self){
 	int i;
 
 	if (strlen(ciphertext) != CIPHERTEXT_LENGTH) return 0;
@@ -177,7 +177,7 @@ static int valid(char *ciphertext, struct fmt_main *pFmt){
 static void set_salt(void *salt){
 }
 
-static void init(struct fmt_main *pFmt){
+static void init(struct fmt_main *self){
 	char *kpc;
 
 	global_work_size = MAX_KEYS_PER_CRYPT;
@@ -191,7 +191,7 @@ static void init(struct fmt_main *pFmt){
 	// we run find_best_workgroup even if LWS is setted to 0
 	if( ((kpc = getenv("LWS")) == NULL) || (atoi(kpc) == 0)) {
 		create_clobj(SHA_NUM_KEYS);
-		opencl_find_best_workgroup(pFmt);
+		opencl_find_best_workgroup(self);
 		release_clobj();
 	}else {
 		local_work_size = atoi(kpc);
@@ -212,7 +212,7 @@ static void init(struct fmt_main *pFmt){
 		}
 	}
 	fprintf(stderr, "Local work size (LWS) %d, Global work size (GWS) %d\n",(int)local_work_size, max_keys_per_crypt);
-	pFmt->params.max_keys_per_crypt = max_keys_per_crypt;
+	self->params.max_keys_per_crypt = max_keys_per_crypt;
 
 }
 

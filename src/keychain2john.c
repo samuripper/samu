@@ -71,45 +71,56 @@ static void print_hex(unsigned char *str, int len)
 static void process_file(const char *filename)
 {
 	FILE *fp;
+	unsigned char buf[4];
+	unsigned char salt[SALTLEN];
+	unsigned char iv[IVLEN];
+	unsigned char ct[CTLEN];
+	long pos, cipheroff;
+	size_t bytes;
 
 	if (!(fp = fopen(filename, "rb"))) {
 		fprintf(stderr, "! %s: %s\n", filename, strerror(errno));
 		return;
 	}
 	fseek(fp, -4, SEEK_END);
-	unsigned char buf[4];
 
 	while(1) {
 		fseek(fp, -8, SEEK_CUR);
 		if(fread(buf, 4, 1, fp) == 0) {
-			fprintf(stderr, "%s : Couldn't find db key. Is a keychain file?\n", filename);
+			fprintf(stderr, "%s : Couldn't find db key. Is it a keychain file?\n", filename);
 			exit(1);
 		}
 		if(!memcmp(buf, magic, 4))
 			break;
 	}
 
-	long pos = ftell(fp) - 4;
+	pos = ftell(fp) - 4;
 
 	// ciphertext offset
 	fseek(fp, pos + 8, SEEK_SET);
-	long cipheroff = fget32(fp);
+	cipheroff = fget32(fp);
 
 	// salt
 	fseek(fp, pos + 44, SEEK_SET);
-	unsigned char salt[SALTLEN];
-	fread(salt, SALTLEN, 1, fp);
-
+	bytes = fread(salt, SALTLEN, 1, fp);
+	if(bytes != SALTLEN){
+		fprintf(stderr, "Something went wrong - fread(salt) error\n");
+		exit(1);
+	}
 	// IV
 	fseek(fp, pos + 64, SEEK_SET);
-	unsigned char iv[IVLEN];
-	fread(iv, IVLEN, 1, fp);
-
+	bytes = fread(iv, IVLEN, 1, fp);
+	if(bytes != IVLEN){
+		fprintf(stderr, "Something went wrong - fread(iv) error\n");
+		exit(1);
+	}
 	// ciphertext
 	fseek(fp, pos + cipheroff, SEEK_SET);
-	unsigned char ct[CTLEN];
-	fread(ct, CTLEN, 1, fp);
-
+	bytes = fread(ct, CTLEN, 1, fp);
+	if(bytes != CTLEN){
+		fprintf(stderr, "Something went wrong - fread(ct) error\n");
+		exit(1);
+	}
 	// output
 	printf("%s:$keychain$*", filename);
 	print_hex(salt, SALTLEN);
@@ -122,13 +133,13 @@ static void process_file(const char *filename)
 	fclose(fp);
 }
 
-int main(int argc, char **argv)
+int keychain2john(int argc, char **argv)
 {
 	int i;
 
 	if (argc < 2) {
 		puts("Usage: keychain2john [keychain files]");
-		return 0;
+		return -1;
 	}
 	for (i = 1; i < argc; i++)
 		process_file(argv[i]);

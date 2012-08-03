@@ -96,6 +96,7 @@ JOHN_OBJS = \
 	dynamic_fmt.o dynamic_parser.o dynamic_preloads.o dynamic_utils.o \
 	hmacMD5_fmt.o hmacSHA1_fmt.o \
 	django_fmt.o \
+	truecrypt_fmt.o \
 	SKEY_fmt.o \
 	ssh_fmt.o ssh2john.o \
 	pfx_fmt.o pfx2john.o \
@@ -105,6 +106,7 @@ JOHN_OBJS = \
 	rawSHA0_fmt.o \
 	zip_fmt.o zip2john.o gladman_hmac.o gladman_pwd2key.o \
 	racf2john.o \
+	keychain2john.o \
 	pwsafe2john.o \
 	keepass2john.o \
 	wpapsk_fmt.o hccap2john.o \
@@ -132,7 +134,9 @@ OCL_OBJS = \
 	opencl_nt_fmt.o opencl_rawmd5_fmt.o opencl_nsldaps_fmt.o \
 	opencl_cryptsha512_fmt.o opencl_mscash2_fmt.o opencl_wpapsk_fmt.o \
 	opencl_xsha512_fmt.o opencl_rawsha512_fmt.o opencl_bf_std.o \
-	opencl_bf_fmt.o opencl_pwsafe_fmt.o opencl_rawmd4_fmt.o
+	opencl_bf_fmt.o opencl_pwsafe_fmt.o opencl_rawmd4_fmt.o \
+	opencl_keychain_fmt.o opencl_agilekeychain_fmt.o opencl_zip_fmt.o \
+	opencl_encfs_fmt.o opencl_odf_fmt.o opencl_sxc_fmt.o
 
 CUDA_OBJS = \
 	cuda_common.o \
@@ -193,14 +197,14 @@ PROJ = ../run/john ../run/unshadow ../run/unafs ../run/unique ../run/undrop \
 	../run/genmkvpwd ../run/mkvcalcproba ../run/calc_stat \
 	../run/tgtsnarf ../run/racf2john ../run/mozilla2john ../run/hccap2john \
 	../run/pwsafe2john ../run/raw2dyna ../run/keepass2john ../run/pfx2john \
-	john.local.conf
+	../run/keychain2john john.local.conf
 PROJ_DOS = ../run/john.bin ../run/john.com \
 	../run/unshadow.com ../run/unafs.com ../run/unique.com \
 	../run/undrop.com \
 	../run/ssh2john.com ../run/pdf2john.com ../run/rar2john.com ../run/zip2john \
 	../run/racf2john.com ../run/mozilla2john.com ../run/hccap2john.com \
 	../run/pwsafe2john.com ../run/keepass2john.com ../run/pfx2john.com \
-	john.local.conf
+	../run/keychain2john.com john.local.conf
 PROJ_WIN32 = ../run/john.exe \
 	../run/unshadow.exe ../run/unafs.exe ../run/unique.exe \
 	../run/undrop.exe \
@@ -208,7 +212,7 @@ PROJ_WIN32 = ../run/john.exe \
 	../run/genmkvpwd.exe ../run/mkvcalcproba.exe ../run/calc_stat.exe \
 	../run/racf2john.exe ../run/mozilla2john.exe ../run/hccap2john.exe \
 	../run/pwsafe2john.exe ../run/raw2dyna.exe ../run/keepass2john.exe \
-	../run/pfx2john.exe john.local.conf
+	../run/pfx2john.exe ../run/keychain2john.exe john.local.conf
 PROJ_WIN32_MINGW = ../run/john-mingw.exe \
 	../run/unshadow.exe ../run/unafs.exe ../run/unique.exe \
 	../run/undrop.exe \
@@ -216,7 +220,7 @@ PROJ_WIN32_MINGW = ../run/john-mingw.exe \
 	../run/genmkvpwd.exe ../run/mkvcalcproba.exe ../run/calc_stat.exe \
 	../run/racf2john.exe ../run/mozilla2john.exe ../run/hccap2john.exe \
 	../run/pwsafe2john.exe ../run/raw2dyna.exe ../run/keepass2john.exe \
-	../run/pfx2john.exe john.local.conf
+	../run/pfx2john.exe ../run/keychain2john.exe john.local.conf
 
 default:
 	@echo "To build John the Ripper, type:"
@@ -1523,6 +1527,10 @@ endif
 	$(RM) ../run/racf2john
 	ln -s john ../run/racf2john
 
+../run/keychain2john: ../run/john
+	$(RM) ../run/keychain2john
+	ln -s john ../run/keychain2john
+
 ../run/pwsafe2john: ../run/john
 	$(RM) ../run/pwsafe2john
 	ln -s john ../run/pwsafe2john
@@ -1574,6 +1582,9 @@ endif
 
 ../run/racf2john.com: john.com
 	copy john.com ..\run\racf2john.com
+
+../run/keychain2john.com: john.com
+	copy john.com ..\run\keychain2john.com
 
 ../run/pwsafe2john.com: john.com
 	copy john.com ..\run\pwsafe2john.com
@@ -1654,6 +1665,10 @@ endif
 ../run/racf2john.exe: symlink.c
 	$(CC) symlink.c -o ../run/racf2john.exe
 	strip ../run/racf2john.exe
+
+../run/keychain2john.exe: symlink.c
+	$(CC) symlink.c -o ../run/keychain2john.exe
+	strip ../run/keychain2john.exe
 
 ../run/pwsafe2john.exe: symlink.c
 	$(CC) symlink.c -o ../run/pwsafe2john.exe
