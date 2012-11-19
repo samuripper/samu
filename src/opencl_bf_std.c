@@ -435,11 +435,37 @@ void BF_clear_buffer()
   clean_gpu_buffer(&buffers[pltfrmno][devno]);
 }
 
+static cl_device_type device_type(int platform_id, int dev_id)
+{
+	cl_platform_id platform[MAX_PLATFORMS];
+	cl_device_id devices[MAX_DEVICES_PER_PLATFORM] ;
+	cl_uint num_platforms, device_num;
+	cl_device_type type;
+	HANDLE_CLERROR(clGetPlatformIDs(MAX_PLATFORMS, platform,
+		&num_platforms), "No OpenCL platform found");
+	HANDLE_CLERROR(clGetDeviceIDs(platform[platform_id],
+		CL_DEVICE_TYPE_ALL, MAXGPUS, devices, &device_num),
+	    "No OpenCL device of that type exist");
+	HANDLE_CLERROR(clGetDeviceInfo(devices[dev_id], CL_DEVICE_TYPE,
+		sizeof(cl_device_type), &type, NULL),
+	    "Error querying CL_DEVICE_TYPE");
+
+	return type;
+}
+
+
 void BF_select_device(int platform_no,int dev_no)
 {
 	devno=dev_no;pltfrmno=platform_no;
-
-	opencl_init("$JOHN/bf_kernel.cl", dev_no, platform_no);
+	
+	if(CL_DEVICE_TYPE_CPU == device_type(platform_no,dev_no)){
+	        if(CHANNEL_INTERLEAVE == 1)
+			opencl_init("$JOHN/bf_cpu_kernel.cl", dev_no, platform_no);
+		else
+			printf("Please set NUM_CHANNELS and WAVEFRONT_SIZE to 1 in opencl_bf_std.h") ;
+	}	
+	else
+		opencl_init("$JOHN/bf_kernel.cl", dev_no, platform_no);
 
 	pltfrmid[platform_no]=platform[platform_no];
 
@@ -451,39 +477,39 @@ void BF_select_device(int platform_no,int dev_no)
 
 	krnl[platform_no][dev_no]=clCreateKernel(prg[platform_no][dev_no],"blowfish",&err) ;
 
-	if(err) {printf("Create Kernel blowfish FAILED\n"); return ;}
+	if(err) {fprintf(stderr, "Create Kernel blowfish FAILED\n"); return ;}
 
 	cmdq[platform_no][dev_no]=queue[dev_no];
 
 	buffers[platform_no][dev_no].salt_gpu=clCreateBuffer(cntxt[platform_no][dev_no],CL_MEM_READ_ONLY, 4*sizeof(cl_uint), NULL, &err);
-	if((buffers[platform_no][dev_no].salt_gpu==(cl_mem)0)) { HANDLE_CLERROR(err, "Create Buffer FAILED\n"); }
+	if((buffers[platform_no][dev_no].salt_gpu==(cl_mem)0)) { HANDLE_CLERROR(err, "Create Buffer FAILED"); }
 
 	buffers[platform_no][dev_no].P_box_gpu=clCreateBuffer(cntxt[platform_no][dev_no], CL_MEM_READ_ONLY|CL_MEM_COPY_HOST_PTR, sizeof(cl_uint)*18, P_box, &err);
-	if((buffers[platform_no][dev_no].P_box_gpu==(cl_mem)0)) { HANDLE_CLERROR(err, "Create Buffer FAILED\n"); }
+	if((buffers[platform_no][dev_no].P_box_gpu==(cl_mem)0)) { HANDLE_CLERROR(err, "Create Buffer FAILED"); }
 
 	buffers[platform_no][dev_no].S_box_gpu=clCreateBuffer(cntxt[platform_no][dev_no], CL_MEM_READ_ONLY|CL_MEM_COPY_HOST_PTR, sizeof(cl_uint)*1024, S_box, &err);
-	if((buffers[platform_no][dev_no].S_box_gpu==(cl_mem)0)) { HANDLE_CLERROR(err, "Create Buffer FAILED\n"); }
+	if((buffers[platform_no][dev_no].S_box_gpu==(cl_mem)0)) { HANDLE_CLERROR(err, "Create Buffer FAILED"); }
 
 	buffers[platform_no][dev_no].out_gpu=clCreateBuffer(cntxt[platform_no][dev_no], CL_MEM_READ_WRITE, BF_N*sizeof(cl_uint)*2, NULL, &err);
-	if((buffers[platform_no][dev_no].out_gpu==(cl_mem)0)) { HANDLE_CLERROR(err, "Create Buffer FAILED\n"); }
+	if((buffers[platform_no][dev_no].out_gpu==(cl_mem)0)) { HANDLE_CLERROR(err, "Create Buffer FAILED"); }
 
 	buffers[platform_no][dev_no].BF_current_S_gpu=clCreateBuffer(cntxt[platform_no][dev_no], CL_MEM_READ_WRITE, BF_N*1024*sizeof(unsigned int), NULL, &err);
-	if((buffers[platform_no][dev_no].BF_current_S_gpu==(cl_mem)0)) { HANDLE_CLERROR(err, "Create Buffer FAILED\n"); }
+	if((buffers[platform_no][dev_no].BF_current_S_gpu==(cl_mem)0)) { HANDLE_CLERROR(err, "Create Buffer FAILED"); }
 
 	buffers[platform_no][dev_no].BF_current_P_gpu=clCreateBuffer(cntxt[platform_no][dev_no], CL_MEM_READ_WRITE, BF_N*sizeof(unsigned int)*18, NULL, &err);
-	if((buffers[platform_no][dev_no].BF_current_P_gpu==(cl_mem)0)) { HANDLE_CLERROR(err, "Create Buffer FAILED\n"); }
+	if((buffers[platform_no][dev_no].BF_current_P_gpu==(cl_mem)0)) { HANDLE_CLERROR(err, "Create Buffer FAILED"); }
 
-	HANDLE_CLERROR(clSetKernelArg(krnl[platform_no][dev_no],0,sizeof(cl_mem),&buffers[platform_no][dev_no].salt_gpu),"Set Kernel Arg FAILED arg0\n");
+	HANDLE_CLERROR(clSetKernelArg(krnl[platform_no][dev_no],0,sizeof(cl_mem),&buffers[platform_no][dev_no].salt_gpu),"Set Kernel Arg FAILED arg0");
 
-	HANDLE_CLERROR(clSetKernelArg(krnl[platform_no][dev_no],1,sizeof(cl_mem),&buffers[platform_no][dev_no].P_box_gpu),"Set Kernel Arg FAILED arg2\n");
+	HANDLE_CLERROR(clSetKernelArg(krnl[platform_no][dev_no],1,sizeof(cl_mem),&buffers[platform_no][dev_no].P_box_gpu),"Set Kernel Arg FAILED arg2");
 
-	HANDLE_CLERROR(clSetKernelArg(krnl[platform_no][dev_no],2,sizeof(cl_mem),&buffers[platform_no][dev_no].out_gpu),"Set Kernel Arg FAILED arg3\n");
+	HANDLE_CLERROR(clSetKernelArg(krnl[platform_no][dev_no],2,sizeof(cl_mem),&buffers[platform_no][dev_no].out_gpu),"Set Kernel Arg FAILED arg3");
 
-	HANDLE_CLERROR(clSetKernelArg(krnl[platform_no][dev_no],3,sizeof(cl_mem),&buffers[platform_no][dev_no].BF_current_S_gpu),"Set Kernel Arg FAILED arg4\n");
+	HANDLE_CLERROR(clSetKernelArg(krnl[platform_no][dev_no],3,sizeof(cl_mem),&buffers[platform_no][dev_no].BF_current_S_gpu),"Set Kernel Arg FAILED arg4");
 
-	HANDLE_CLERROR(clSetKernelArg(krnl[platform_no][dev_no],4,sizeof(cl_mem),&buffers[platform_no][dev_no].BF_current_P_gpu),"Set Kernel Arg FAILED arg5\n");
+	HANDLE_CLERROR(clSetKernelArg(krnl[platform_no][dev_no],4,sizeof(cl_mem),&buffers[platform_no][dev_no].BF_current_P_gpu),"Set Kernel Arg FAILED arg5");
 
-	HANDLE_CLERROR(clSetKernelArg(krnl[platform_no][dev_no],6,sizeof(cl_mem),&buffers[platform_no][dev_no].S_box_gpu),"Set Kernel Arg FAILED arg7\n");
+	HANDLE_CLERROR(clSetKernelArg(krnl[platform_no][dev_no],6,sizeof(cl_mem),&buffers[platform_no][dev_no].S_box_gpu),"Set Kernel Arg FAILED arg7");
 
 
 }
@@ -513,24 +539,29 @@ void opencl_BF_std_set_key(char *key, int index, int sign_extension_bug)
 void exec_bf(cl_uint *salt_api,cl_uint *BF_out,cl_uint rounds,int platform_no,int dev_no)
 {
 	cl_event evnt;
-
-	size_t N=BF_N,M=WORK_GROUP_SIZE;
+	
+	size_t N ,M=WORK_GROUP_SIZE;
+	
+	if(CL_DEVICE_TYPE_CPU == get_device_type(dev_no))
+		N = BF_N/2;
+	else
+		N = BF_N ;
 
 	HANDLE_CLERROR(clEnqueueWriteBuffer(cmdq[platform_no][dev_no],buffers[platform_no][dev_no].salt_gpu,CL_TRUE,0,4*sizeof(cl_uint),salt_api,0,NULL,NULL ), "Failed Copy data to gpu");
 
 	HANDLE_CLERROR(clEnqueueWriteBuffer(cmdq[platform_no][dev_no],buffers[platform_no][dev_no].BF_current_P_gpu,CL_TRUE,0,BF_N*sizeof(unsigned int)*18,BF_init_key,0,NULL,NULL ), "Failed Copy data to gpu");
 
-	HANDLE_CLERROR(clSetKernelArg(krnl[platform_no][dev_no],5,sizeof(cl_uint),&rounds),"Set Kernel Arg FAILED arg6\n");
+	HANDLE_CLERROR(clSetKernelArg(krnl[platform_no][dev_no],5,sizeof(cl_uint),&rounds),"Set Kernel Arg FAILED arg6");
 
 	err=clEnqueueNDRangeKernel(cmdq[platform_no][dev_no],krnl[platform_no][dev_no],1,NULL,&N,&M,0,NULL,&evnt);
 
 	clWaitForEvents(1,&evnt);
 
-	HANDLE_CLERROR(clEnqueueReadBuffer(cmdq[platform_no][dev_no],buffers[platform_no][dev_no].out_gpu,CL_FALSE,0,2*BF_N*sizeof(cl_uint),BF_out, 0, NULL, NULL),"Write FAILED\n");
+	HANDLE_CLERROR(clEnqueueReadBuffer(cmdq[platform_no][dev_no],buffers[platform_no][dev_no].out_gpu,CL_FALSE,0,2*BF_N*sizeof(cl_uint),BF_out, 0, NULL, NULL),"Write FAILED");
 
-	HANDLE_CLERROR(clEnqueueReadBuffer(cmdq[platform_no][dev_no],buffers[platform_no][dev_no].BF_current_P_gpu,CL_FALSE,0,BF_N*sizeof(unsigned int)*18,BF_current_P, 0, NULL, NULL),"Write FAILED\n");
+	HANDLE_CLERROR(clEnqueueReadBuffer(cmdq[platform_no][dev_no],buffers[platform_no][dev_no].BF_current_P_gpu,CL_FALSE,0,BF_N*sizeof(unsigned int)*18,BF_current_P, 0, NULL, NULL),"Write FAILED");
 
-	HANDLE_CLERROR(clEnqueueReadBuffer(cmdq[platform_no][dev_no],buffers[platform_no][dev_no].BF_current_S_gpu,CL_TRUE,0,BF_N*1024*sizeof(unsigned int),BF_current_S, 0, NULL, NULL),"Write FAILED\n");
+	HANDLE_CLERROR(clEnqueueReadBuffer(cmdq[platform_no][dev_no],buffers[platform_no][dev_no].BF_current_S_gpu,CL_TRUE,0,BF_N*1024*sizeof(unsigned int),BF_current_S, 0, NULL, NULL),"Write FAILED");
 
 	clFinish(cmdq[platform_no][dev_no]);
 

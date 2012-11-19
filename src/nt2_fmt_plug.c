@@ -1,7 +1,7 @@
 /*
  * Alternate NT format, with reduced binary size
  *
- * This  software is Copyright 2011, 2012 magnum, and it is hereby released to
+ * This software is Copyright 2011, 2012 magnum, and it is hereby released to
  * the general public under the following terms:  Redistribution and use in
  * source and binary forms, with or without modification, are permitted.
  *
@@ -15,7 +15,6 @@
 #include "arch.h"
 
 #ifdef MD4_SSE_PARA
-#define MMX_COEF			4
 #define NBKEYS				(MMX_COEF * MD4_SSE_PARA)
 #elif MMX_COEF
 #define NBKEYS				MMX_COEF
@@ -228,8 +227,11 @@ static char *prepare(char *split_fields[10], struct fmt_main *self)
 
 static void *binary(char *ciphertext)
 {
-	static unsigned long out_[DIGEST_SIZE/sizeof(unsigned long)];
-	unsigned int *out = (unsigned int*)out_;
+	static union {
+		unsigned long dummy;
+		unsigned int i[DIGEST_SIZE/sizeof(unsigned int)];
+	} _out;
+	unsigned int *out = _out.i;
 	unsigned int i;
 	unsigned int temp;
 
@@ -368,7 +370,7 @@ key_cleaning_enc:
 	                                PLAINTEXT_LENGTH + 1,
 	                                (unsigned char*)_key,
 	                                strlen(_key)) << 1;
-	if (saved_key_length <= 0)
+	if (saved_key_length < 0)
 		saved_key_length = strlen16(saved_key);
 #endif
 }
@@ -472,7 +474,7 @@ static void set_key_utf8(char *_key, int index)
 	                                 PLAINTEXT_LENGTH + 1,
 	                                 (unsigned char*)_key,
 	                                 strlen(_key)) << 1;
-	if (saved_key_length <= 0)
+	if (saved_key_length < 0)
 		saved_key_length = strlen16(saved_key);
 #endif
 }

@@ -1191,7 +1191,7 @@ static int check_inflate_CODE1(u8 *next, int left) {
                 bits += 8;
             }
             here = distfix[hold & 0x1F];
-          dodist:
+//          dodist:
             op = (unsigned)(here.bits);
             hold >>= op;
             bits -= op;
@@ -1218,6 +1218,30 @@ static int check_inflate_CODE1(u8 *next, int left) {
 					return 0;  /*invalid distance too far back*/
                 hold >>= op;
                 bits -= op;
+
+				//***** start of patched code from Pavel Semjanov (see original code below)
+				whave += len;
+            }
+            else
+				return 0;		/*invalid distance code*/
+		}
+		else if (op & 32) {
+			// end of block [may present in short sequences, but only at the end.] NOTE, we need to find out if we EVER hit the end of a block, at only 24 bytes???
+			if (left == 0)
+				return 1;
+			return 0;
+		}
+		else {
+			return 0; // invalid literal/length code.
+		}
+		//***** End of patched code from Pavel
+	}
+}
+
+// original code block (for above), prior to patch from Pavel Semjanov [pavel@semjanov.com]
+// this code would be a direct drop in between the comments starting and stopping with //***** above
+// also the dodist label was commented out (no longer used).
+#if 0
 				whave += dist;
             }
             else if ((op & 64) == 0) {	/* 2nd level distance code */
@@ -1246,8 +1270,7 @@ static int check_inflate_CODE1(u8 *next, int left) {
 		else {
 			return 0; // invalid literal/length code.
 		}
-	}
-}
+#endif
 
 /*
  * Crypt_all simply performs the checksum .zip validatation of the data. It performs

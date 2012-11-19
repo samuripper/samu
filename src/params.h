@@ -19,7 +19,7 @@
 /*
  * John's version number.
  */
-#define JOHN_VERSION			"1.7.9-jumbo-6+unstable"
+#define JOHN_VERSION			"1.7.9-jumbo-7+unstable"
 
 /*
  * Notes to packagers of John for *BSD "ports", Linux distributions, etc.:
@@ -253,7 +253,7 @@ extern int password_hash_thresholds[PASSWORD_HASH_SIZES];
 /*
  * Maximum number of GECOS words per password to load.
  */
-#define LDR_WORDS_MAX			0x10
+#define LDR_WORDS_MAX			60
 
 /*
  * Maximum number of partial hash collisions in a db->password_hash[] bucket.
@@ -265,7 +265,7 @@ extern int password_hash_thresholds[PASSWORD_HASH_SIZES];
 /*
  * Maximum number of GECOS words to try in pairs.
  */
-#define SINGLE_WORDS_PAIR_MAX		4
+#define SINGLE_WORDS_PAIR_MAX		6
 
 /*
  * Charset parameters.

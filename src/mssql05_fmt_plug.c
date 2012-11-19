@@ -1,5 +1,5 @@
 /*
- * This software is Copyright © 2010 bartavelle, <bartavelle at bandecon.com>, and it is hereby released to the general public under the following terms:
+ * This software is Copyright (c) 2010 bartavelle, <bartavelle at bandecon.com>, and it is hereby released to the general public under the following terms:
  * Redistribution and use in source and binary forms, with or without modification, are permitted.
  *
  * Modified by Mathieu Perrin (mathieu at tpfh.org) 09/06
@@ -14,7 +14,6 @@
 #include "arch.h"
 
 #ifdef SHA1_SSE_PARA
-#define MMX_COEF	4
 #define NBKEYS	(MMX_COEF * SHA1_SSE_PARA)
 #elif MMX_COEF
 #define NBKEYS	MMX_COEF
@@ -250,9 +249,9 @@ key_cleaning_enc:
 
 	((unsigned int *)saved_key)[15*MMX_COEF + (index&3) + (index>>2)*SHA_BUF_SIZ*MMX_COEF] = len << 4;
 #else
-	key_length = enc_to_utf16((UTF16*)saved_key, PLAINTEXT_LENGTH + 1,
+	key_length = enc_to_utf16((UTF16*)saved_key, PLAINTEXT_LENGTH,
 	                          (unsigned char*)_key, strlen(_key));
-	if (key_length <= 0)
+	if (key_length < 0)
 		key_length = strlen16((UTF16*)saved_key);
 	key_length <<= 1;
 #endif
@@ -350,9 +349,9 @@ static void set_key_utf8(char *_key, int index)
 
 	((unsigned int *)saved_key)[15*MMX_COEF + (index&3) + (index>>2)*SHA_BUF_SIZ*MMX_COEF] = len << 4;
 #else
-	key_length = utf8_to_utf16((UTF16*)saved_key, PLAINTEXT_LENGTH + 1,
+	key_length = utf8_to_utf16((UTF16*)saved_key, PLAINTEXT_LENGTH,
 	                           (unsigned char*)_key, strlen(_key));
-	if (key_length <= 0)
+	if (key_length < 0)
 		key_length = strlen16((UTF16*)saved_key);
 
 	key_length <<= 1;

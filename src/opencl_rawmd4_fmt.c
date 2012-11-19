@@ -19,7 +19,7 @@
 #define PLAINTEXT_LENGTH    31
 #define FORMAT_LABEL        "raw-md4-opencl"
 #define FORMAT_NAME         "Raw MD4"
-#define ALGORITHM_NAME      "OpenCL"
+#define ALGORITHM_NAME      "OpenCL (inefficient, development use only)"
 #define BENCHMARK_COMMENT   ""
 #define BENCHMARK_LENGTH    -1
 #define CIPHERTEXT_LENGTH   32
@@ -59,34 +59,33 @@ static struct fmt_tests tests[] = {
 };
 
 static void create_clobj(int kpc){
-	pinned_saved_keys = clCreateBuffer(context[gpu_id], CL_MEM_READ_WRITE | CL_MEM_ALLOC_HOST_PTR,
+	pinned_saved_keys = clCreateBuffer(context[ocl_gpu_id], CL_MEM_READ_ONLY | CL_MEM_ALLOC_HOST_PTR,
 		(PLAINTEXT_LENGTH + 1) * kpc, NULL, &ret_code);
 	HANDLE_CLERROR(ret_code, "Error creating page-locked memory pinned_saved_keys");
-
-	saved_plain = (char *) clEnqueueMapBuffer(queue[gpu_id], pinned_saved_keys,
-		CL_TRUE, CL_MAP_WRITE | CL_MAP_READ, 0,
+	saved_plain = (char *) clEnqueueMapBuffer(queue[ocl_gpu_id], pinned_saved_keys,
+		CL_TRUE, CL_MAP_READ | CL_MAP_WRITE, 0,
 		(PLAINTEXT_LENGTH + 1) * kpc, 0, NULL, NULL, &ret_code);
 	HANDLE_CLERROR(ret_code, "Error mapping page-locked memory saved_plain");
+
 	res_hashes = malloc(sizeof(cl_uint) * 3 * kpc);
 
-	pinned_partial_hashes = clCreateBuffer(context[gpu_id],
-		CL_MEM_READ_WRITE | CL_MEM_ALLOC_HOST_PTR, 4 * kpc, NULL, &ret_code);
+	pinned_partial_hashes = clCreateBuffer(context[ocl_gpu_id],
+		CL_MEM_WRITE_ONLY | CL_MEM_ALLOC_HOST_PTR, 4 * kpc, NULL, &ret_code);
 	HANDLE_CLERROR(ret_code, "Error creating page-locked memory pinned_partial_hashes");
-
-	partial_hashes = (cl_uint *) clEnqueueMapBuffer(queue[gpu_id],
+	partial_hashes = (cl_uint *) clEnqueueMapBuffer(queue[ocl_gpu_id],
 		pinned_partial_hashes, CL_TRUE, CL_MAP_READ, 0, 4 * kpc, 0, NULL, NULL, &ret_code);
 	HANDLE_CLERROR(ret_code, "Error mapping page-locked memory partial_hashes");
 
 	// create and set arguments
-	buffer_keys = clCreateBuffer(context[gpu_id], CL_MEM_READ_ONLY,
+	buffer_keys = clCreateBuffer(context[ocl_gpu_id], CL_MEM_READ_ONLY,
 		(PLAINTEXT_LENGTH + 1) * kpc, NULL, &ret_code);
 	HANDLE_CLERROR(ret_code, "Error creating buffer argument buffer_keys");
 
-	buffer_out = clCreateBuffer(context[gpu_id], CL_MEM_WRITE_ONLY,
+	buffer_out = clCreateBuffer(context[ocl_gpu_id], CL_MEM_WRITE_ONLY,
 		BINARY_SIZE * kpc, NULL, &ret_code);
 	HANDLE_CLERROR(ret_code, "Error creating buffer argument buffer_out");
 
-	data_info = clCreateBuffer(context[gpu_id], CL_MEM_READ_ONLY, sizeof(unsigned int) * 2, NULL, &ret_code);
+	data_info = clCreateBuffer(context[ocl_gpu_id], CL_MEM_READ_ONLY, sizeof(unsigned int) * 2, NULL, &ret_code);
 	HANDLE_CLERROR(ret_code, "Error creating data_info out argument");
 
 	HANDLE_CLERROR(clSetKernelArg(crypt_kernel, 0, sizeof(data_info),
@@ -102,23 +101,15 @@ static void create_clobj(int kpc){
 }
 
 static void release_clobj(void){
-	cl_int ret_code;
+	HANDLE_CLERROR(clEnqueueUnmapMemObject(queue[ocl_gpu_id], pinned_partial_hashes, partial_hashes, 0,NULL,NULL), "Error Ummapping partial_hashes");
+	HANDLE_CLERROR(clEnqueueUnmapMemObject(queue[ocl_gpu_id], pinned_saved_keys, saved_plain, 0, NULL, NULL), "Error Ummapping saved_plain");
 
-	ret_code = clEnqueueUnmapMemObject(queue[gpu_id], pinned_partial_hashes, partial_hashes, 0,NULL,NULL);
-	HANDLE_CLERROR(ret_code, "Error Ummapping partial_hashes");
-	ret_code = clEnqueueUnmapMemObject(queue[gpu_id], pinned_saved_keys, saved_plain, 0, NULL, NULL);
-	HANDLE_CLERROR(ret_code, "Error Ummapping saved_plain");
-	ret_code = clReleaseMemObject(buffer_keys);
-	HANDLE_CLERROR(ret_code, "Error Releasing buffer_keys");
-	ret_code = clReleaseMemObject(buffer_out);
-	HANDLE_CLERROR(ret_code, "Error Releasing buffer_out");
-	ret_code = clReleaseMemObject(data_info);
-	HANDLE_CLERROR(ret_code, "Error Releasing data_info");
-	ret_code = clReleaseMemObject(pinned_saved_keys);
-	HANDLE_CLERROR(ret_code, "Error Releasing pinned_saved_keys");
-	ret_code = clReleaseMemObject(pinned_partial_hashes);
-	HANDLE_CLERROR(ret_code, "Error Releasing pinned_partial_hashes");
-	free(res_hashes);
+	HANDLE_CLERROR(clReleaseMemObject(buffer_keys), "Error Releasing buffer_keys");
+	HANDLE_CLERROR(clReleaseMemObject(buffer_out), "Error Releasing buffer_out");
+	HANDLE_CLERROR(clReleaseMemObject(data_info), "Error Releasing data_info");
+	HANDLE_CLERROR(clReleaseMemObject(pinned_saved_keys), "Error Releasing pinned_saved_keys");
+	HANDLE_CLERROR(clReleaseMemObject(pinned_partial_hashes), "Error Releasing pinned_partial_hashes");
+	MEM_FREE(res_hashes);
 }
 
 static void find_best_kpc(void){
@@ -136,7 +127,7 @@ static void find_best_kpc(void){
 		release_clobj();
 		create_clobj(num);
 		advance_cursor();
-		queue_prof = clCreateCommandQueue( context[gpu_id], devices[gpu_id], CL_QUEUE_PROFILING_ENABLE, &ret_code);
+		queue_prof = clCreateCommandQueue( context[ocl_gpu_id], devices[ocl_gpu_id], CL_QUEUE_PROFILING_ENABLE, &ret_code);
 		for (i=0; i < num; i++){
 			memcpy(&(saved_plain[i * (PLAINTEXT_LENGTH + 1)]), "abcaaeaf", PLAINTEXT_LENGTH + 1);
 			saved_plain[i * (PLAINTEXT_LENGTH + 1) + 8] = 0x80;
@@ -161,7 +152,7 @@ static void find_best_kpc(void){
 			kernelExecTimeNs = ((int) (((float) (tmpTime) / num) * 10) ) ;
 			optimal_kpc = num;
 		}
-		free(tmpbuffer);
+		MEM_FREE(tmpbuffer);
 		clReleaseCommandQueue(queue_prof);
 	}
 	fprintf(stderr, "Optimal keys per crypt %d\n(to avoid this test on next run do \"export GWS=%d\")\n",optimal_kpc,optimal_kpc);
@@ -175,16 +166,12 @@ static void init(struct fmt_main *self) {
 
 	global_work_size = MAX_KEYS_PER_CRYPT;
 
-	opencl_init("$JOHN/md4_kernel.cl", gpu_id, platform_id);
-	crypt_kernel = clCreateKernel(program[gpu_id], "md4", &ret_code);
+	opencl_init("$JOHN/md4_kernel.cl", ocl_gpu_id, platform_id);
+	crypt_kernel = clCreateKernel(program[ocl_gpu_id], "md4", &ret_code);
 	HANDLE_CLERROR(ret_code, "Error creating kernel. Double-check kernel name?");
-	if( ((kpc = getenv("LWS")) == NULL) || (atoi(kpc) == 0)) {
-		create_clobj(MD4_NUM_KEYS);
-		opencl_find_best_workgroup(self);
-		release_clobj();
-	}else {
-		local_work_size = atoi(kpc);
-	}
+	create_clobj(MD4_NUM_KEYS);
+	opencl_find_best_workgroup(self);
+	release_clobj();
 	if( (kpc = getenv("GWS")) == NULL){
 		max_keys_per_crypt = MD4_NUM_KEYS;
 		create_clobj(MD4_NUM_KEYS);
@@ -292,19 +279,19 @@ static void crypt_all(int count)
 	fprintf(stderr, "\n");
 #endif
 	// copy keys to the device
-	HANDLE_CLERROR( clEnqueueWriteBuffer(queue[gpu_id], data_info, CL_TRUE, 0,
+	HANDLE_CLERROR( clEnqueueWriteBuffer(queue[ocl_gpu_id], data_info, CL_TRUE, 0,
 	    sizeof(unsigned int) * 2, datai, 0, NULL, NULL),
 	    "failed in clEnqueueWriteBuffer data_info");
-	HANDLE_CLERROR(clEnqueueWriteBuffer(queue[gpu_id], buffer_keys, CL_TRUE, 0,
+	HANDLE_CLERROR(clEnqueueWriteBuffer(queue[ocl_gpu_id], buffer_keys, CL_TRUE, 0,
 	    (PLAINTEXT_LENGTH + 1) * max_keys_per_crypt, saved_plain, 0, NULL, NULL),
 	    "failed in clEnqueueWriteBuffer buffer_keys");
 
-	HANDLE_CLERROR(clEnqueueNDRangeKernel(queue[gpu_id], crypt_kernel, 1, NULL,
-	    &global_work_size, &local_work_size, 0, NULL, &profilingEvent),
+	HANDLE_CLERROR(clEnqueueNDRangeKernel(queue[ocl_gpu_id], crypt_kernel, 1, NULL,
+	    &global_work_size, &local_work_size, 0, NULL, profilingEvent),
 	    "failed in clEnqueueNDRangeKernel");
-	HANDLE_CLERROR(clFinish(queue[gpu_id]),"failed in clFinish");
+	HANDLE_CLERROR(clFinish(queue[ocl_gpu_id]),"failed in clFinish");
 	// read back partial hashes
-	HANDLE_CLERROR(clEnqueueReadBuffer(queue[gpu_id], buffer_out, CL_TRUE, 0,
+	HANDLE_CLERROR(clEnqueueReadBuffer(queue[ocl_gpu_id], buffer_out, CL_TRUE, 0,
 	    sizeof(cl_uint) * max_keys_per_crypt, partial_hashes, 0, NULL, NULL),
 	    "failed in reading data back");
 	have_full_hashes = 0;
@@ -341,7 +328,7 @@ static int cmp_exact(char *source, int count){
 	unsigned int *t = (unsigned int *) get_binary(source);
 
 	if (!have_full_hashes){
-	clEnqueueReadBuffer(queue[gpu_id], buffer_out, CL_TRUE,
+	clEnqueueReadBuffer(queue[ocl_gpu_id], buffer_out, CL_TRUE,
 		sizeof(cl_uint) * (max_keys_per_crypt),
 		sizeof(cl_uint) * 3 * max_keys_per_crypt, res_hashes, 0,
 		NULL, NULL);

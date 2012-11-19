@@ -1,7 +1,7 @@
 /* Password Safe and Password Gorilla cracker patch for JtR. Hacked together
  * during May of 2012 by Dhiru Kholia <dhiru.kholia at gmail.com>.
  *
- * This software is Copyright © 2012, Dhiru Kholia <dhiru.kholia at gmail.com>,
+ * This software is Copyright (c) 2012, Dhiru Kholia <dhiru.kholia at gmail.com>,
  * and it is hereby released to the general public under the following terms:
  * Redistribution and use in source and binary forms, with or without modification,
  * are permitted. */
@@ -67,7 +67,31 @@ static void init(struct fmt_main *self)
 
 static int valid(char *ciphertext, struct fmt_main *self)
 {
-	return !strncmp(ciphertext, "$pwsafe$", 8);
+	// format $pwsafe$version*salt*iterations*hash
+	char *p;
+	char *ctcopy = strdup(ciphertext);
+	char *keeptr = ctcopy;
+	if (strncmp(ciphertext, "$pwsafe$", 8) != 0)
+		return 0;
+	ctcopy += 9;		/* skip over "$pwsafe$*" */
+	if ((p = strtok(ctcopy, "*")) == NULL)	/* version */
+		return 0;
+	if (atoi(p) == 0)
+		return 0;
+	if ((p = strtok(NULL, "*")) == NULL)	/* salt */
+		return 0;
+	if (strlen(p) < 64)
+		return 0;
+	if ((p = strtok(NULL, "*")) == NULL)	/* iterations */
+		return 0;
+	if (atoi(p) == 0)
+		return 0;
+	if ((p = strtok(NULL, "*")) == NULL)	/* hash */
+		return 0;
+	if (strlen(p) != 64)
+		return 0;
+	MEM_FREE(keeptr);
+	return 1;
 }
 
 static void *get_salt(char *ciphertext)
@@ -86,7 +110,7 @@ static void *get_salt(char *ciphertext)
 			+ atoi16[ARCH_INDEX(p[i * 2 + 1])];
 	p = strtok(NULL, "*");
 	cs.iterations = (unsigned int)atoi(p);
-	free(keeptr);
+	MEM_FREE(keeptr);
 	return (void *)&cs;
 }
 

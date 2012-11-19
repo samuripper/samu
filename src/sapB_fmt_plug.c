@@ -8,7 +8,7 @@
  * cheers: see test-cases.
  *
  * Heavily modified by magnum 2011-2012 for performance and for SIMD, OMP and
- * encodings support. Copyright © 2011, 2012 magnum, and it is hereby released
+ * encodings support. Copyright (c) 2011, 2012 magnum, and it is hereby released
  * to the general public under the following terms:  Redistribution and use in
  * source and binary forms, with or without modification, are permitted.
  */
@@ -27,7 +27,6 @@
 #define FORMAT_NAME			"SAP CODVN B (BCODE)"
 
 #ifdef MD5_SSE_PARA
-#define MMX_COEF			4
 #define NBKEYS				(MMX_COEF * MD5_SSE_PARA)
 #define DO_MMX_MD5(in, out)		SSEmd5body(in, (unsigned int*)out, 1)
 #elif defined(MMX_COEF)

@@ -49,7 +49,7 @@ static struct fmt_tests sha224_tests[] = {
 	{NULL}
 };
 #endif
-#define ALGORITHM_NAME		"CUDA"
+#define ALGORITHM_NAME		"CUDA (inefficient, development use mostly)"
 
 extern void gpu_rawsha256(sha256_password *, SHA_HASH *, int);
 extern void gpu_rawsha224(sha256_password *, SHA_HASH *, int);
@@ -66,14 +66,14 @@ static void cleanup()
 		cuda_pageLockedFree(inbuffer);
 		cuda_pageLockedFree(outbuffer);
 	} else {
-		free(inbuffer);
-		free(outbuffer);
+		MEM_FREE(inbuffer);
+		MEM_FREE(outbuffer);
 	}
 }
 
 static void init(struct fmt_main *self)
 {
-	cuda_init(gpu_id);
+	cuda_init(cuda_gpu_id);
 	if (cuda_getAsyncEngineCount() > 0) {
 		overlap = 1;
 		inbuffer =

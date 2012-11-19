@@ -193,6 +193,9 @@
 #elif defined(__clang__)
 #define MD5_SSE_PARA			5
 #define MD5_N_STR			"20x"
+#elif defined(__llvm__)
+#define MD5_SSE_PARA			3
+#define MD5_N_STR			"12x"
 #elif defined(__GNUC__) && GCC_VERSION == 30406	// 3.4.6
 #define MD5_SSE_PARA			3
 #define MD5_N_STR			"12x"
@@ -218,6 +221,9 @@
 #elif defined(__clang__)
 #define MD4_SSE_PARA			4
 #define MD4_N_STR			"16x"
+#elif defined(__llvm__)
+#define MD4_SSE_PARA			3
+#define MD4_N_STR			"12x"
 #elif defined(__GNUC__) && GCC_VERSION < 40405	// 4.4.5
 #define MD4_SSE_PARA			1
 #define MD4_N_STR			"4x"
@@ -240,7 +246,14 @@
 #elif defined(__clang__)
 #define SHA1_SSE_PARA			2
 #define SHA1_N_STR			"8x"
+#elif defined(__llvm__)
+#define SHA_BUF_SIZ			80
+#define SHA1_SSE_PARA			2
+#define SHA1_N_STR			"8x"
 #elif defined(__GNUC__) && GCC_VERSION < 40504	// 4.5.4
+#define SHA1_SSE_PARA			1
+#define SHA1_N_STR			"4x"
+#elif defined(__GNUC__) && GCC_VERSION > 40700	// 4.7.0
 #define SHA1_SSE_PARA			1
 #define SHA1_N_STR			"4x"
 #else
@@ -271,6 +284,9 @@
 #define SHA_BUF_SIZ			80
 #endif
 #endif
+
+#define MMX_TYPE			" SSE2"
+#define MMX_COEF			4
 
 #define BF_ASM				0
 #define BF_SCALE			1

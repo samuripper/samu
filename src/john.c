@@ -95,9 +95,21 @@ extern struct fmt_main fmt_crypt;
 extern struct fmt_main fmt_trip;
 extern struct fmt_main fmt_dummy;
 
+>>>>>>>>>>>>>>>>>>>> File 1
 #if OPENSSL_VERSION_NUMBER >= 0x10000000
+>>>>>>>>>>>>>>>>>>>> File 2
+#if OPENSSL_VERSION_NUMBER >= 0x10000000
+>>>>>>>>>>>>>>>>>>>> File 3
+// can be done as a _plug format now. But I have not renamed the plugin file just yet.
+<<<<<<<<<<<<<<<<<<<<
 extern struct fmt_main fmt_django;
+>>>>>>>>>>>>>>>>>>>> File 1
 #endif
+>>>>>>>>>>>>>>>>>>>> File 2
+#endif
+>>>>>>>>>>>>>>>>>>>> File 3
+
+<<<<<<<<<<<<<<<<<<<<
 #if OPENSSL_VERSION_NUMBER >= 0x10001000
 extern struct fmt_main fmt_truecrypt;
 extern struct fmt_main fmt_truecrypt_sha512;
@@ -116,6 +128,10 @@ extern struct fmt_main fmt_SKEY;
 extern struct fmt_main mozilla_fmt;
 extern int mozilla2john(int argc, char **argv);
 #endif
+#ifdef HAVE_KRB5
+extern struct fmt_main fmt_KRB5_kinit;
+extern struct fmt_main fmt_krb5_18;
+#endif
 extern int hccap2john(int argc, char **argv);
 
 #ifdef CL_VERSION_1_0
@@ -127,19 +143,30 @@ extern struct fmt_main fmt_opencl_rawSHA1;
 extern struct fmt_main fmt_opencl_cryptMD5;
 extern struct fmt_main fmt_opencl_phpass;
 extern struct fmt_main fmt_opencl_mysqlsha1;
+extern struct fmt_main fmt_opencl_cryptsha256;
 extern struct fmt_main fmt_opencl_cryptsha512;
 extern struct fmt_main fmt_opencl_mscash2;
 extern struct fmt_main fmt_opencl_wpapsk;
 extern struct fmt_main fmt_opencl_keychain;
 extern struct fmt_main fmt_opencl_agilekeychain;
+extern struct fmt_main fmt_opencl_strip;
 extern struct fmt_main fmt_opencl_zip;
 extern struct fmt_main fmt_opencl_encfs;
 extern struct fmt_main fmt_opencl_odf;
 extern struct fmt_main fmt_opencl_sxc;
+extern struct fmt_main fmt_opencl_gpg;
+extern struct fmt_main fmt_opencl_dmg;
 extern struct fmt_main fmt_opencl_xsha512;
 extern struct fmt_main fmt_opencl_rawsha512;
+extern struct fmt_main fmt_opencl_rawsha512_ng;
+extern struct fmt_main fmt_opencl_rawsha256;
 extern struct fmt_main fmt_opencl_bf;
 extern struct fmt_main fmt_opencl_pwsafe;
+extern struct fmt_main fmt_opencl_DES;
+extern struct fmt_main fmt_opencl_office2007;
+extern struct fmt_main fmt_opencl_office2010;
+extern struct fmt_main fmt_opencl_office2013;
+extern struct fmt_main fmt_opencl_NTLMv2;
 #endif
 #ifdef HAVE_CUDA
 extern struct fmt_main fmt_cuda_cryptmd5;
@@ -174,6 +201,8 @@ extern int unshadow(int argc, char **argv);
 extern int unafs(int argc, char **argv);
 extern int undrop(int argc, char **argv);
 #ifndef _MSC_VER
+/* XXX: What's wrong with having these along with MSC? Perhaps this restriction
+ * was meant to apply to some of these only? Maybe SSH only? */
 extern int ssh2john(int argc, char **argv);
 extern int pfx2john(int argc, char **argv);
 extern int keychain2john(int argc, char **argv);
@@ -217,7 +246,6 @@ static void john_register_all(void)
 	john_register_one(&fmt_AFS);
 	john_register_one(&fmt_LM);
 
-/*
 	for (i = 0; i < cnt; ++i)
 		john_register_one(&(selfs[i]));
 
@@ -227,9 +255,7 @@ static void john_register_all(void)
 	john_register_one(&fmt_hmacSHA1);
 	john_register_one(&fmt_rawSHA0);
 
-#if OPENSSL_VERSION_NUMBER >= 0x10000000
 	john_register_one(&fmt_django);
-#endif
 #if OPENSSL_VERSION_NUMBER >= 0x10001000
 	john_register_one(&fmt_truecrypt);
 	john_register_one(&fmt_truecrypt_sha512);
@@ -242,6 +268,10 @@ static void john_register_all(void)
 
 #ifdef HAVE_NSS
 	john_register_one(&mozilla_fmt);
+#endif
+#ifdef HAVE_KRB5
+	john_register_one(&fmt_KRB5_kinit);
+	john_register_one(&fmt_krb5_18);
 #endif
 
 #ifdef HAVE_CRYPT
@@ -261,29 +291,40 @@ static void john_register_all(void)
 #endif
 	john_register_one(&zip_fmt);
 	john_register_one(&fmt_dummy);
-*/
+
 #ifdef CL_VERSION_1_0
-	//john_register_one(&fmt_opencl_cryptMD5);
-	john_register_one(&fmt_opencl_mysqlsha1);
+	john_register_one(&fmt_opencl_NSLDAPS);
 	john_register_one(&fmt_opencl_rawMD4);
 	john_register_one(&fmt_opencl_rawMD5);
 	john_register_one(&fmt_opencl_NT);
 	john_register_one(&fmt_opencl_rawSHA1);
+	john_register_one(&fmt_opencl_cryptMD5);
 	john_register_one(&fmt_opencl_phpass);
+	john_register_one(&fmt_opencl_mysqlsha1);
+	john_register_one(&fmt_opencl_cryptsha256);
 	john_register_one(&fmt_opencl_cryptsha512);
 	john_register_one(&fmt_opencl_mscash2);
 	john_register_one(&fmt_opencl_wpapsk);
 	john_register_one(&fmt_opencl_keychain);
 	john_register_one(&fmt_opencl_agilekeychain);
+	john_register_one(&fmt_opencl_strip);
 	john_register_one(&fmt_opencl_zip);
 	john_register_one(&fmt_opencl_encfs);
 	john_register_one(&fmt_opencl_odf);
 	john_register_one(&fmt_opencl_sxc);
+	john_register_one(&fmt_opencl_gpg);
+	john_register_one(&fmt_opencl_dmg);
 	john_register_one(&fmt_opencl_xsha512);
 	john_register_one(&fmt_opencl_rawsha512);
+	john_register_one(&fmt_opencl_rawsha512_ng);
+        john_register_one(&fmt_opencl_rawsha256);
 	john_register_one(&fmt_opencl_bf);
 	john_register_one(&fmt_opencl_pwsafe);
-	john_register_one(&fmt_opencl_NSLDAPS);
+	john_register_one(&fmt_opencl_DES);
+	john_register_one(&fmt_opencl_office2007);
+	john_register_one(&fmt_opencl_office2010);
+	john_register_one(&fmt_opencl_office2013);
+	john_register_one(&fmt_opencl_NTLMv2);
 #endif
 
 #ifdef HAVE_CUDA
@@ -556,6 +597,9 @@ static void john_list_options()
 #ifdef HAVE_CUDA
 	printf("cuda-devices, ");
 #endif
+#if defined(CL_VERSION_1_0) || defined(HAVE_CUDA)
+	printf("request-vectorize, request-scalar, ");
+#endif
 	/* NOTE: The following must end the list. Anything listed after
 	   <conf section name> will be ignored by current
 	   bash completion scripts. */
@@ -639,14 +683,26 @@ static void john_init(char *name, int argc, char **argv)
 	{
 		puts("--help                    print usage summary, just like running the command");
 		puts("                          without any parameters");
+		puts("--config=FILE             use FILE instead of john.conf or john.ini");
+		puts("--mem-file-size=SIZE      size threshold for wordlist preload (default 5 MB)");
 		puts("--subformat=FORMAT        pick a benchmark format for --format=crypt");
 		puts("--mkpc=N                  force a lower max. keys per crypt");
 		puts("--length=N                force a lower max. length");
 		puts("--field-separator-char=C  use 'C' instead of the ':' in input and pot files");
 		puts("--fix-state-delay=N       performance tweak, see documentation");
-		puts("--log-stderr              log to screen instead of file\n");
+		puts("--nolog                   disables creation and writing to john.log file");
+		puts("--log-stderr              log to screen instead of file");
 		puts("--raw-always-valid=C      if C is 'Y' or 'y', then the dynamic format will");
 		puts("                          always treat raw hashes as valid.");
+		puts("--progress-every=N        emit a status line every N seconds");
+		puts("--crack-status            emit a status line whenever a password is cracked");
+		puts("--max-run-time=N          gracefully exit after this many seconds");
+		puts("--regen-lost-salts=N      regenerate lost salts (see doc/OPTIONS)");
+#if defined(CL_VERSION_1_0) || defined(HAVE_CUDA)
+		puts("--request-vectorize       request vectorized mode");
+		puts("--request-scalar          request non-vectorized mode");
+#endif
+		puts("");
 		exit(0);
 	}
 
@@ -867,7 +923,7 @@ static void john_init(char *name, int argc, char **argv)
 			}
 			printf("%s%s", label, formats_list[i] ? ", " : "\n");
 		} while (formats_list[i]);
-		free(formats_list);
+		MEM_FREE(formats_list);
 		exit(0);
 	}
 	if (options.listconf &&
@@ -1099,6 +1155,25 @@ static void john_init(char *name, int argc, char **argv)
 		}
 	}
 
+#ifdef CL_VERSION_1_0
+	if (!options.ocl_platform) {
+		if ((options.ocl_platform =
+		     cfg_get_param(SECTION_OPTIONS, SUBSECTION_OPENCL, "Platform")))
+			platform_id = atoi(options.ocl_platform);
+		else
+			platform_id = -1;
+	}
+	if (!options.gpu_device) {
+		if ((options.gpu_device =
+		     cfg_get_param(SECTION_OPTIONS, SUBSECTION_OPENCL, "Device")))
+			ocl_gpu_id = atoi(options.gpu_device);
+		else
+			ocl_gpu_id = -1;
+	}
+	if (platform_id == -1 || ocl_gpu_id == -1)
+		opencl_find_gpu(&ocl_gpu_id, &platform_id);
+#endif
+
 	common_init();
 	sig_init();
 
@@ -1106,18 +1181,6 @@ static void john_init(char *name, int argc, char **argv)
 
 	if (options.encodingStr && options.encodingStr[0])
 		log_event("- %s input encoding enabled", options.encodingStr);
-
-#ifdef CL_VERSION_1_0
-	if (!options.ocl_platform)
-	if ((options.ocl_platform =
-	     cfg_get_param(SECTION_OPTIONS, SUBSECTION_OPENCL, "Platform")))
-		platform_id = atoi(options.ocl_platform);
-
-	if (!options.ocl_device)
-	if ((options.ocl_device =
-	     cfg_get_param(SECTION_OPTIONS, SUBSECTION_OPENCL, "Device")))
-		gpu_id = atoi(options.ocl_device);
-#endif
 }
 
 static void john_run(void)
@@ -1335,7 +1398,7 @@ int main(int argc, char **argv)
 	}
 #endif
 
- 	if (!strcmp(name, "pdf2john")) {
+	if (!strcmp(name, "pdf2john")) {
 		CPU_detect_or_fallback(argv, 0);
 		return pdf2john(argc, argv);
 	}
@@ -1351,11 +1414,16 @@ int main(int argc, char **argv)
 
 #ifdef HAVE_MPI
 	mpi_setup(argc, argv);
+#else
+	if (getenv("OMPI_COMM_WORLD_SIZE"))
+	if (atoi(getenv("OMPI_COMM_WORLD_SIZE")) > 1)
+		fprintf(stderr, "WARNING: Running under MPI, but this is NOT an MPI build of John.\n");
 #endif
 	john_init(name, argc, argv);
 
-	/* --max-run-time disregards load times */
+	/* --max-run-time and --progress-every disregards load time */
 	timer_abort = options.max_run_time + 1;
+	timer_status = options.status_interval;
 
 	john_run();
 	john_done();

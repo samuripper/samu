@@ -3,7 +3,7 @@
  *
  * CUDA port by Lukas Odzioba <ukasz at openwall dot net>
  *
- * This software is Copyright Â© 2012, Dhiru Kholia <dhiru.kholia at gmail.com>,
+ * This software is Copyright (c) 2012, Dhiru Kholia <dhiru.kholia at gmail.com>,
  * and it is hereby released to the general public under the following terms:
  * Redistribution and use in source and binary forms, with or without modification,
  * are permitted. */
@@ -18,6 +18,7 @@
 #include "params.h"
 #include "options.h"
 #include "base64.h"
+#include "memory.h"
 #include "cuda_pwsafe.h"
 #define FORMAT_LABEL            "pwsafe-cuda"
 #define FORMAT_NAME             "Password Safe SHA-256"
@@ -37,7 +38,6 @@ static struct fmt_tests pwsafe_tests[] = {
 };
 
 
-static int any_cracked;
 static pwsafe_pass *host_pass;                          /** binary ciphertexts **/
 static pwsafe_salt *host_salt;                          /** salt **/
 static pwsafe_hash *host_hash;                          /** calculated hashes **/
@@ -47,12 +47,35 @@ static void init(struct fmt_main *self)
         host_pass = calloc(KEYS_PER_CRYPT, sizeof(pwsafe_pass));
         host_hash = calloc(KEYS_PER_CRYPT, sizeof(pwsafe_hash));
         host_salt = calloc(1, sizeof(pwsafe_salt));
-        any_cracked = 1;
 }
 
 static int valid(char *ciphertext, struct fmt_main *self)
 {
-        return !strncmp(ciphertext, "$pwsafe$", 8);
+	// format $pwsafe$version*salt*iterations*hash
+	char *p;
+	char *ctcopy = strdup(ciphertext);
+	char *keeptr = ctcopy;
+	if (strncmp(ciphertext, "$pwsafe$", 8) != 0)
+		return 0;
+	ctcopy += 9;		/* skip over "$pwsafe$*" */
+	if ((p = strtok(ctcopy, "*")) == NULL)	/* version */
+		return 0;
+	if (atoi(p) == 0)
+		return 0;
+	if ((p = strtok(NULL, "*")) == NULL)	/* salt */
+		return 0;
+	if (strlen(p) < 64)
+		return 0;
+	if ((p = strtok(NULL, "*")) == NULL)	/* iterations */
+		return 0;
+	if (atoi(p) == 0)
+		return 0;
+	if ((p = strtok(NULL, "*")) == NULL)	/* hash */
+		return 0;
+	if (strlen(p) != 64)
+		return 0;
+	MEM_FREE(keeptr);
+	return 1;
 }
 
 static void *get_salt(char *ciphertext)
@@ -77,37 +100,32 @@ static void *get_salt(char *ciphertext)
                 salt_struct->hash[i] = atoi16[ARCH_INDEX(p[i * 2])] * 16
                     + atoi16[ARCH_INDEX(p[i * 2 + 1])];
 
-        free(keeptr);
+        MEM_FREE(keeptr);
+
+	alter_endianity(salt_struct->hash, 32);
+
         return (void *) salt_struct;
 }
 
 static void set_salt(void *salt)
 {
         memcpy(host_salt, salt, SALT_SIZE);
-        any_cracked = 0;
 }
 
 static void crypt_all(int count)
 {
-        int i;
-        unsigned int *src = (unsigned int *) host_salt->hash;
-        unsigned int *dst = (unsigned int *) host_salt->hash;
-        any_cracked = 0;
-
-        for (i = 0; i < 8; i++) {
-                dst[i] = SWAP32(src[i]);
-        }
-
         gpu_pwpass(host_pass, host_salt, host_hash);
-        for (i = 0; i < count; i++) {
-                if (host_hash[i].cracked == 1)
-                        any_cracked = 1;
-        }
 }
 
 static int cmp_all(void *binary, int count)
 {
-        return any_cracked;
+	int i;
+
+	for (i = 0; i < count; i++)
+		if (host_hash[i].cracked)
+			return 1;
+
+	return 0;
 }
 
 static int cmp_one(void *binary, int index)

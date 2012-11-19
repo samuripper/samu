@@ -42,6 +42,7 @@ import sys
 
 try:
     import json
+    assert json
 except ImportError:
     import simplejson as json
 
@@ -127,7 +128,7 @@ class AgileKeychain(Keychain):
                               kd['level'],
                               b64decode(kd['data'][:-1]),
                               b64decode(kd['validation'][:-1]),
-                              kd['iterations'])
+                              kd.get('iterations', Key.ITERATIONS))
                     self.keys.append(key)
             finally:
                 keys_file.close()

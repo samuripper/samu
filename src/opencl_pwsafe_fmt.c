@@ -1,9 +1,9 @@
 /* Password Safe cracker patch for JtR. Hacked together during May of
  * 2012 by Dhiru Kholia <dhiru.kholia at gmail.com>.
  *
- * OpenCL port by Lukas Odzioba <ukasz@openwall.net>
+ * OpenCL port by Lukas Odzioba <ukasz at openwall.net>
  *
- * This software is Copyright ÃÃÂ© 2012, Dhiru Kholia <dhiru.kholia at gmail.com>,
+ * This software is Copyright (c) 2012, Dhiru Kholia <dhiru.kholia at gmail.com>,
  * and it is hereby released to the general public under the following terms:
  * Redistribution and use in source and binary forms, with or without modification,
  * are permitted. */
@@ -19,7 +19,7 @@
 #include "options.h"
 #include "base64.h"
 #include "common-opencl.h"
-
+#include "memory.h"
 
 #define uint8_t                         unsigned char
 #define uint32_t                        unsigned int
@@ -33,7 +33,7 @@
 #define PLAINTEXT_LENGTH        15
 #define BINARY_SIZE             32
 #define KERNEL_NAME             "pwsafe"
-#define KEYS_PER_CRYPT		1024
+#define KEYS_PER_CRYPT		512*112
 #define MIN_KEYS_PER_CRYPT      KEYS_PER_CRYPT
 #define MAX_KEYS_PER_CRYPT      KEYS_PER_CRYPT
 # define SWAP32(n) \
@@ -69,7 +69,6 @@ static size_t insize = sizeof(pwsafe_pass) * KEYS_PER_CRYPT;
 static size_t outsize = sizeof(pwsafe_hash) * KEYS_PER_CRYPT;
 static size_t saltsize = sizeof(pwsafe_salt);
 
-static int any_cracked;
 static pwsafe_pass *host_pass;				/** binary ciphertexts **/
 static pwsafe_salt *host_salt;				/** salt **/
 static pwsafe_hash *host_hash;				/** calculated hashes **/
@@ -81,7 +80,7 @@ static void release_all(void)
 	HANDLE_CLERROR(clReleaseMemObject(mem_in), "Release memin");
 	HANDLE_CLERROR(clReleaseMemObject(mem_salt), "Release memsalt");
 	HANDLE_CLERROR(clReleaseMemObject(mem_out), "Release memout");
-	HANDLE_CLERROR(clReleaseCommandQueue(queue[gpu_id]), "Release Queue");
+	HANDLE_CLERROR(clReleaseCommandQueue(queue[ocl_gpu_id]), "Release Queue");
 }
 
 static void pwsafe_set_key(char *key, int index)
@@ -96,26 +95,25 @@ static void init(struct fmt_main *self)
 	host_pass = calloc(KEYS_PER_CRYPT, sizeof(pwsafe_pass));
 	host_hash = calloc(KEYS_PER_CRYPT, sizeof(pwsafe_hash));
 	host_salt = calloc(1, sizeof(pwsafe_salt));
-	any_cracked = 1;
 
-	opencl_init("$JOHN/pwsafe_kernel.cl", gpu_id, platform_id);
+	opencl_init("$JOHN/pwsafe_kernel.cl", ocl_gpu_id, platform_id);
 
 	///Alocate memory on the GPU
 
 	mem_salt =
-	    clCreateBuffer(context[gpu_id], CL_MEM_READ_ONLY, saltsize, NULL,
+	    clCreateBuffer(context[ocl_gpu_id], CL_MEM_READ_ONLY, saltsize, NULL,
 	    &ret_code);
-	HANDLE_CLERROR(ret_code, "Error while alocating memory for salt");
+	HANDLE_CLERROR(ret_code, "Error while allocating memory for salt");
 	mem_in =
-	    clCreateBuffer(context[gpu_id], CL_MEM_READ_ONLY, insize, NULL,
+	    clCreateBuffer(context[ocl_gpu_id], CL_MEM_READ_ONLY, insize, NULL,
 	    &ret_code);
-	HANDLE_CLERROR(ret_code, "Error while alocating memory for passwords");
+	HANDLE_CLERROR(ret_code, "Error while allocating memory for passwords");
 	mem_out =
-	    clCreateBuffer(context[gpu_id], CL_MEM_WRITE_ONLY, outsize, NULL,
+	    clCreateBuffer(context[ocl_gpu_id], CL_MEM_WRITE_ONLY, outsize, NULL,
 	    &ret_code);
-	HANDLE_CLERROR(ret_code, "Error while alocating memory for hashes");
+	HANDLE_CLERROR(ret_code, "Error while allocating memory for hashes");
 	///Assign kernel parameters
-	crypt_kernel = clCreateKernel(program[gpu_id], KERNEL_NAME, &ret_code);
+	crypt_kernel = clCreateKernel(program[ocl_gpu_id], KERNEL_NAME, &ret_code);
 	HANDLE_CLERROR(ret_code, "Error while creating kernel");
 	clSetKernelArg(crypt_kernel, 0, sizeof(mem_in), &mem_in);
 	clSetKernelArg(crypt_kernel, 1, sizeof(mem_out), &mem_out);
@@ -126,11 +124,33 @@ static void init(struct fmt_main *self)
 	atexit(release_all);
 }
 
-
-
 static int valid(char *ciphertext, struct fmt_main *self)
 {
-	return !strncmp(ciphertext, "$pwsafe$", 8);
+	// format $pwsafe$version*salt*iterations*hash
+	char *p;
+	char *ctcopy = strdup(ciphertext);
+	char *keeptr = ctcopy;
+	if (strncmp(ciphertext, "$pwsafe$", 8) != 0)
+		return 0;
+	ctcopy += 9;		/* skip over "$pwsafe$*" */
+	if ((p = strtok(ctcopy, "*")) == NULL)	/* version */
+		return 0;
+	if (atoi(p) == 0)
+		return 0;
+	if ((p = strtok(NULL, "*")) == NULL)	/* salt */
+		return 0;
+	if (strlen(p) < 64)
+		return 0;
+	if ((p = strtok(NULL, "*")) == NULL)	/* iterations */
+		return 0;
+	if (atoi(p) == 0)
+		return 0;
+	if ((p = strtok(NULL, "*")) == NULL)	/* hash */
+		return 0;
+	if (strlen(p) != 64)
+		return 0;
+	MEM_FREE(keeptr);
+	return 1;
 }
 
 static void *get_salt(char *ciphertext)
@@ -155,7 +175,8 @@ static void *get_salt(char *ciphertext)
 		salt_struct->hash[i] = atoi16[ARCH_INDEX(p[i * 2])] * 16
 		    + atoi16[ARCH_INDEX(p[i * 2 + 1])];
 
-	free(keeptr);
+	MEM_FREE(keeptr);
+        alter_endianity(salt_struct->hash, 32);
 	return (void *) salt_struct;
 }
 
@@ -163,53 +184,43 @@ static void *get_salt(char *ciphertext)
 static void set_salt(void *salt)
 {
 	memcpy(host_salt, salt, SALT_SIZE);
-	any_cracked = 0;
 }
 
 
 
 static void crypt_all(int count)
 {
-	int i;
 	size_t worksize = KEYS_PER_CRYPT;
 	size_t localworksize = local_work_size;
-	unsigned int *src = (unsigned int *) host_salt->hash;
-	unsigned int *dst = (unsigned int *) host_salt->hash;
-	any_cracked = 0;
 
-	for (i = 0; i < 8; i++) {
-		dst[i] = SWAP32(src[i]);
-	}
 //fprintf(stderr, "rounds = %d\n",host_salt->iterations);
 ///Copy data to GPU memory
 	HANDLE_CLERROR(clEnqueueWriteBuffer
-	    (queue[gpu_id], mem_in, CL_FALSE, 0, insize, host_pass, 0, NULL,
+	    (queue[ocl_gpu_id], mem_in, CL_FALSE, 0, insize, host_pass, 0, NULL,
 		NULL), "Copy memin");
-	HANDLE_CLERROR(clEnqueueWriteBuffer(queue[gpu_id], mem_salt, CL_FALSE,
+	HANDLE_CLERROR(clEnqueueWriteBuffer(queue[ocl_gpu_id], mem_salt, CL_FALSE,
 		0, saltsize, host_salt, 0, NULL, NULL), "Copy memsalt");
 
 	///Run kernel
 	HANDLE_CLERROR(clEnqueueNDRangeKernel
-	    (queue[gpu_id], crypt_kernel, 1, NULL, &worksize, &localworksize,
-		0, NULL, &profilingEvent), "Set ND range");
-	HANDLE_CLERROR(clEnqueueReadBuffer(queue[gpu_id], mem_out, CL_FALSE, 0,
+	    (queue[ocl_gpu_id], crypt_kernel, 1, NULL, &worksize, &localworksize,
+		0, NULL, profilingEvent), "Set ND range");
+	HANDLE_CLERROR(clEnqueueReadBuffer(queue[ocl_gpu_id], mem_out, CL_FALSE, 0,
 		outsize, host_hash, 0, NULL, NULL),
 	    "Copy data back");
 
 	///Await completion of all the above
-	HANDLE_CLERROR(clFinish(queue[gpu_id]), "clFinish error");
-
-
-	//gpu_pwpass(host_pass, host_salt, host_hash);
-	for (i = 0; i < count; i++) {
-		if (host_hash[i].cracked == 1)
-			any_cracked = 1;
-	}
+	HANDLE_CLERROR(clFinish(queue[ocl_gpu_id]), "clFinish error");
 }
 
 static int cmp_all(void *binary, int count)
 {
-	return any_cracked;
+	int i;
+
+	for (i = 0; i < count; i++)
+		if (host_hash[i].cracked == 1)
+			return 1;
+	return 0;
 }
 
 static int cmp_one(void *binary, int index)

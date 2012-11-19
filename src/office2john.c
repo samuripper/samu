@@ -145,7 +145,7 @@ static void process_file(char *filename, char *parentfile)
 	int pkeHashSize;
 	unsigned char *pkeSaltValue;
 	unsigned char encryptedVerifierHashInput[16 + 2];
-	unsigned char encryptedVerifierHashValue[32 + 2];
+	unsigned char encryptedVerifierHashValue[64 + 2];
 	int version;
 	xmlChar *spinCountXML;
 	xmlChar *saltSizeXML;
@@ -153,6 +153,7 @@ static void process_file(char *filename, char *parentfile)
 	xmlChar *pkeKeyBitsXML;
 	xmlChar *pkeHashSizeXML;
 	xmlChar *pkeSaltValueXML;
+	xmlChar *hashAlgorithm;
 	xmlChar *encryptedVerifierHashInputXML;
 	xmlChar *encryptedVerifierHashValueXML;
 
@@ -186,7 +187,7 @@ static void process_file(char *filename, char *parentfile)
 			fprintf(stderr, "%s : An external cryptographic provider is not supported\n", parentfile);
 			return;
 		}
-		if (versionMinor == 0x04 && versionMajor == 0x04) { /* Office 2010 files */
+		if (versionMinor == 0x04 && versionMajor == 0x04) { /* Office 2010 and 2013 files */
 			if (encryptionFlags != fAgile)
 				fprintf(stderr, "%s : The encryption flags are not consistent with the encryption type\n", parentfile);
 			/* rest of the data is in XML format, dump it to a file */
@@ -239,6 +240,17 @@ static void process_file(char *filename, char *parentfile)
 			pkeKeyBits = atoi(pkeKeyBitsXML);
 			xmlFree(pkeKeyBitsXML);
 			pkeHashSizeXML = xmlGetProp(cur, "hashSize");
+			hashAlgorithm = xmlGetProp(cur, "hashAlgorithm");
+			if(strcmp(hashAlgorithm, "SHA1") == 0) {
+				version = 2010;
+			}
+			else if (strcmp(hashAlgorithm, "SHA512") == 0) {
+				version = 2013;
+			}
+			else {
+				fprintf(stderr, "%s uses un-supported hashing algorithm %s, please file a bug! \n", parentfile, hashAlgorithm);
+				return;
+			}
 			pkeHashSize = atoi(pkeHashSizeXML);
 			xmlFree(pkeHashSizeXML);
 			pkeSaltValueXML = xmlGetProp(cur, "saltValue");
@@ -251,7 +263,6 @@ static void process_file(char *filename, char *parentfile)
 			encryptedVerifierHashValueXML = xmlGetProp(cur, "encryptedVerifierHashValue");
 			base64_decode(encryptedVerifierHashValueXML, strlen(encryptedVerifierHashValueXML), encryptedVerifierHashValue);
 			xmlFree(encryptedVerifierHashValueXML);
-			version = 2010;
 			printf("%s:$office$*%d*%d*%d*%d*", parentfile, version, spinCount, pkeKeyBits, saltSize);
 			print_hex(pkeSaltValue, saltSize);
 			printf("*");
@@ -331,7 +342,7 @@ static void clone(GsfInput * input, GsfOutput * output)
 	g_object_unref(G_OBJECT(input));
 }
 
-static int test(char *argv[])
+static int test(char *filename)
 {
 	GsfInput *input;
 	GsfInfile *infile;
@@ -346,10 +357,10 @@ static int test(char *argv[])
 	int ret;
 	GsfOutfile *out;
 
-	input = gsf_input_stdio_new(argv[1], &err);
+	input = gsf_input_stdio_new(filename, &err);
 	if (input == NULL) {
 		g_return_val_if_fail(err != NULL, 1);
-		fprintf(stderr, "%s : No such file!\n", argv[1], err->message);
+		fprintf(stderr, "%s : No such file!\n", filename, err->message);
 		g_error_free(err);
 		return 1;
 	}
@@ -359,7 +370,7 @@ static int test(char *argv[])
 
 	if (infile == NULL) {
 		g_return_val_if_fail(err != NULL, 1);
-		fprintf(stderr, "%s : %s, maybe the file is not encrypted!\n", argv[1], err->message);
+		fprintf(stderr, "%s : %s, maybe the file is not encrypted!\n", filename, err->message);
 		g_error_free(err);
 		return 1;
 	}
@@ -367,7 +378,7 @@ static int test(char *argv[])
 	in = GSF_INFILE(infile);
 	src = gsf_infile_child_by_name(in, "EncryptionInfo");
 	if (!src) {
-		fprintf(stderr, "%s : is not a Office 2007 / 2010 encrypted file!\n", argv[1]);
+		fprintf(stderr, "%s : is not a Office 2007 / 2010 / 2013 encrypted file!\n", filename);
 		return 1;
 	}
 
@@ -379,7 +390,7 @@ static int test(char *argv[])
 	outfile = gsf_outfile_stdio_new(dirname, &err);
 	if (outfile == NULL) {
 		g_return_val_if_fail(err != NULL, 1);
-		fprintf(stderr, "%s : %s\n", argv[1], err->message);
+		fprintf(stderr, "%s : %s\n", filename, err->message);
 		g_error_free(err);
 		return 1;
 	}
@@ -391,7 +402,7 @@ static int test(char *argv[])
 
 	sprintf(outpath, "%s/EncryptionInfo", dirname);
 
-	process_file(outpath, argv[1]);
+	process_file(outpath, filename);
 
 	ret = unlink(outpath);
 	ret = rmdir(dirname);
@@ -400,10 +411,10 @@ static int test(char *argv[])
 
 int main(int argc, char *argv[])
 {
-	int res;
+	int i, res;
 
-	if (argc != 2) {
-		puts("Usage: office2john OFFICE-2007-OR-2010-ENCRYPTED-FILE");
+	if (argc < 2) {
+		puts("Usage: office2john OFFICE-2007-OR-2010-OR-2013-ENCRYPTED-FILE [FILE...]");
 
 		if (argc <= 1)
 			return 0;
@@ -412,7 +423,8 @@ int main(int argc, char *argv[])
 	}
 
 	gsf_init();
-	res = test(argv);
+	for (i = 1; i < argc; i++)
+		res |= test(argv[i]);
 	gsf_shutdown();
 
 	return res;

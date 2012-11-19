@@ -1,7 +1,7 @@
 /* ODF cracker patch for JtR. Hacked together during Summer of 2012 by
  * Dhiru Kholia <dhiru.kholia at gmail.com>.
  *
- * This software is Copyright © 2012, Dhiru Kholia <dhiru.kholia at gmail.com>,
+ * This software is Copyright (c) 2012, Dhiru Kholia <dhiru.kholia at gmail.com>,
  * and it is hereby released to the general public under the following terms:
  * Redistribution and use in source and binary forms, with or without modification,
  * are permitted.  */
@@ -96,7 +96,7 @@ static void *get_salt(char *ciphertext)
 	cs.iterations = atoi(p);
 	p = strtok(NULL, "*");
 	cs.key_size = atoi(p);
-	p = strtok(NULL, "*");
+	strtok(NULL, "*");
 	/* skip checksum field */
 	p = strtok(NULL, "*");
 	cs.iv_length = atoi(p);
@@ -110,12 +110,12 @@ static void *get_salt(char *ciphertext)
 	for (i = 0; i < cs.salt_length; i++)
 		cs.salt[i] = atoi16[ARCH_INDEX(p[i * 2])] * 16
 			+ atoi16[ARCH_INDEX(p[i * 2 + 1])];
-	p = strtok(NULL, "*");
+	strtok(NULL, "*");
 	p = strtok(NULL, "*");
 	for (i = 0; i < 1024; i++)
 		cs.content[i] = atoi16[ARCH_INDEX(p[i * 2])] * 16
 			+ atoi16[ARCH_INDEX(p[i * 2 + 1])];
-	free(keeptr);
+	MEM_FREE(keeptr);
 	return (void *)&cs;
 }
 
@@ -131,10 +131,10 @@ static void *get_binary(char *ciphertext)
 	char *ctcopy = strdup(ciphertext);
 	char *keeptr = ctcopy;
 	ctcopy += 6;	/* skip over "$odf$*" */
-	p = strtok(ctcopy, "*");
-	p = strtok(NULL, "*");
-	p = strtok(NULL, "*");
-	p = strtok(NULL, "*");
+	strtok(ctcopy, "*");
+	strtok(NULL, "*");
+	strtok(NULL, "*");
+	strtok(NULL, "*");
 	p = strtok(NULL, "*");
 	for (i = 0; i < BINARY_SIZE; i++) {
 		out[i] =
@@ -142,7 +142,7 @@ static void *get_binary(char *ciphertext)
 			atoi16[ARCH_INDEX(p[1])];
 		p += 2;
 	}
-	free(keeptr);
+	MEM_FREE(keeptr);
 	return out;
 }
 

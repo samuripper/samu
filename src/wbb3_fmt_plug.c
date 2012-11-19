@@ -1,7 +1,7 @@
 /* WoltLab Burning Board 3 (WBB3) cracker patch for JtR. Hacked together during
  * May of 2012 by Dhiru Kholia <dhiru.kholia at gmail.com>.
  *
- * This software is Copyright © 2012, Dhiru Kholia <dhiru.kholia at gmail.com>,
+ * This software is Copyright (c) 2012, Dhiru Kholia <dhiru.kholia at gmail.com>,
  * and it is hereby released to the general public under the following terms:
  * Redistribution and use in source and binary forms, with or without modification,
  * are permitted.
@@ -113,7 +113,6 @@ static void *get_salt(char *ciphertext)
 	cs.type = atoi(p);
 	p = strtok(NULL, "*");
 	strcpy((char *)cs.salt, p);
-	p = strtok(NULL, "*");
 	return (void *)&cs;
 }
 

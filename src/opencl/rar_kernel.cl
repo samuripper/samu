@@ -4,37 +4,62 @@
  * This software is hereby released to the general public under
  * the following terms: Redistribution and use in source and binary
  * forms, with or without modification, are permitted.
+ *
+ * This code is based on the work of Alexander L. Roshal (C)
+ *
+ * The unRAR sources may be used in any software to handle RAR
+ * archives without limitations free of charge, but cannot be used
+ * to re-create the RAR compression algorithm, which is proprietary.
+ * Distribution of modified unRAR sources in separate form or as a
+ * part of other software is permitted, provided that it is clearly
+ * stated in the documentation and source comments that the code may
+ * not be used to develop a RAR (WinRAR) compatible archiver.
+ *
  */
 
-#ifdef cl_khr_byte_addressable_store
-#pragma OPENCL EXTENSION cl_khr_byte_addressable_store : disable
-#endif
-#ifdef cl_nv_pragma_unroll
-#define NVIDIA
-#pragma OPENCL EXTENSION cl_nv_pragma_unroll : enable
+#include "opencl_device_info.h"
+
+#if gpu_nvidia(DEVICE_INFO) || amd_gcn(DEVICE_INFO)
+#define SCALAR
 #endif
 
-#include "opencl_rar.h"
+#if gpu_amd(DEVICE_INFO)
+#define USE_BITSELECT
+#endif
 
 #define UNICODE_LENGTH		(2 * PLAINTEXT_LENGTH)
+#define ROUNDS			0x40000
 
 /* Macros for reading/writing chars from int32's */
-
-#if defined(RAR_VECTORIZE)
-#define GETCHAR(buf, index) (((buf)[(index)>>2] >> (((index) & 3) << 3)) & 0xffU)
-#else
 #define GETCHAR(buf, index) (((uchar*)(buf))[(index)])
+#define GETCHAR_G(buf, index) (((const __global uchar*)(buf))[(index)])
+#define LASTCHAR_BE(buf, index, val) (buf)[(index)>>2] = ((buf)[(index)>>2] & (0xffffff00U << ((((index) & 3) ^ 3) << 3))) + ((val) << ((((index) & 3) ^ 3) << 3))
+
+#if gpu_nvidia(DEVICE_INFO)
+#define GETCHAR_BE(buf, index) (((__local uchar*)(buf))[(index) ^ 3])
+#else
+#define GETCHAR_BE(buf, index) (((uchar*)(buf))[(index) ^ 3])
 #endif
 
-#define GETCHAR_BE(buf, index) (((buf)[(index)>>2] >> ((3 - ((index) & 3)) << 3)) & 0xffU)
-/* The below is faster for AMD at low GWS but doesn't take off at higher. */
-//#define GETCHAR_BE(buf, index) (((uchar*)(buf))[(index & ~3U) + (3 - (index & 3))])
+#if gpu_amd(DEVICE_INFO) || no_byte_addressable(DEVICE_INFO)
 
+/* These use 32-bit stores */
 #define PUTCHAR(buf, index, val) (buf)[(index)>>2] = ((buf)[(index)>>2] & ~(0xffU << (((index) & 3) << 3))) + ((val) << (((index) & 3) << 3))
-#define PUTCHAR_BE(buf, index, val) (buf)[(index)>>2] = ((buf)[(index)>>2] & ~(0xffU << ((3 - ((index) & 3)) << 3))) + ((val) << ((3 - ((index) & 3)) << 3))
-#define LASTCHAR_BE(buf, index, val) (buf)[(index)>>2] = ((buf)[(index)>>2] & (0xffffff00U << ((3 - ((index) & 3)) << 3))) + ((val) << ((3 - ((index) & 3)) << 3))
+#define PUTCHAR_BE(buf, index, val) (buf)[(index)>>2] = ((buf)[(index)>>2] & ~(0xffU << ((((index) & 3) ^ 3) << 3))) + ((val) << ((((index) & 3) ^ 3) << 3))
+#define PUTCHAR_G	PUTCHAR
+#define PUTCHAR_BE_G	PUTCHAR_BE
 
-#ifdef NVIDIA
+#else
+
+/* These use byte-adressed stores */
+#define PUTCHAR(buf, index, val) ((uchar*)(buf))[(index)] = (val)
+#define PUTCHAR_G(buf, index, val) ((__global uchar*)(buf))[(index)] = (val)
+#define PUTCHAR_BE(buf, index, val) ((uchar*)(buf))[(index) ^ 3] = (val)
+#define PUTCHAR_BE_G(buf, index, val) ((__global uchar*)(buf))[(index) ^ 3] = (val)
+
+#endif
+
+#ifdef SCALAR
 inline uint SWAP32(uint x)
 {
 	x = rotate(x, 16U);
@@ -56,190 +81,8 @@ inline uint SWAP32(uint x)
 #define H4	0x10325476
 #define H5	0xC3D2E1F0
 
-#ifdef RAR_VECTORIZE
 /* raw'n'lean sha1, context kept in output buffer */
-void sha1_blockV(uint4 *W, uint4 *output)
-{
-	uint4 A, B, C, D, E, temp;
-
-	A = output[0];
-	B = output[1];
-	C = output[2];
-	D = output[3];
-	E = output[4];
-
-#undef R
-#define R(t)	  \
-	( \
-		temp = W[(t -  3) & 0x0F] ^ W[(t - 8) & 0x0F] ^ \
-		W[(t - 14) & 0x0F] ^ W[ t      & 0x0F], \
-		( W[t & 0x0F] = rotate(temp, 1U) ) \
-		)
-
-#undef P
-#define P(a,b,c,d,e,x)	\
-	{ \
-		e += rotate(a, 5U) + F(b,c,d) + K + x; \
-		b = rotate(b, 30U); \
-	}
-
-#ifdef NVIDIA
-#define F(x,y,z)	(z ^ (x & (y ^ z)))
-#else
-#define F(x,y,z)	bitselect(z, y, x)
-#endif
-
-#define K		0x5A827999
-
-	P( A, B, C, D, E, W[0]  );
-	P( E, A, B, C, D, W[1]  );
-	P( D, E, A, B, C, W[2]  );
-	P( C, D, E, A, B, W[3]  );
-	P( B, C, D, E, A, W[4]  );
-	P( A, B, C, D, E, W[5]  );
-	P( E, A, B, C, D, W[6]  );
-	P( D, E, A, B, C, W[7]  );
-	P( C, D, E, A, B, W[8]  );
-	P( B, C, D, E, A, W[9]  );
-	P( A, B, C, D, E, W[10] );
-	P( E, A, B, C, D, W[11] );
-	P( D, E, A, B, C, W[12] );
-	P( C, D, E, A, B, W[13] );
-	P( B, C, D, E, A, W[14] );
-	P( A, B, C, D, E, W[15] );
-	P( E, A, B, C, D, R(16) );
-	P( D, E, A, B, C, R(17) );
-	P( C, D, E, A, B, R(18) );
-	P( B, C, D, E, A, R(19) );
-
-#undef K
-#undef F
-
-#define F(x,y,z)	(x ^ y ^ z)
-#define K		0x6ED9EBA1
-
-	P( A, B, C, D, E, R(20) );
-	P( E, A, B, C, D, R(21) );
-	P( D, E, A, B, C, R(22) );
-	P( C, D, E, A, B, R(23) );
-	P( B, C, D, E, A, R(24) );
-	P( A, B, C, D, E, R(25) );
-	P( E, A, B, C, D, R(26) );
-	P( D, E, A, B, C, R(27) );
-	P( C, D, E, A, B, R(28) );
-	P( B, C, D, E, A, R(29) );
-	P( A, B, C, D, E, R(30) );
-	P( E, A, B, C, D, R(31) );
-	P( D, E, A, B, C, R(32) );
-	P( C, D, E, A, B, R(33) );
-	P( B, C, D, E, A, R(34) );
-	P( A, B, C, D, E, R(35) );
-	P( E, A, B, C, D, R(36) );
-	P( D, E, A, B, C, R(37) );
-	P( C, D, E, A, B, R(38) );
-	P( B, C, D, E, A, R(39) );
-
-#undef K
-#undef F
-
-#ifdef NVIDIA
-#define F(x,y,z)	((x & y) | (z & (x | y)))
-#else
-#define F(x,y,z)	(bitselect(x, y, z) ^ bitselect(x, 0U, y))
-#endif
-#define K		0x8F1BBCDC
-
-	P( A, B, C, D, E, R(40) );
-	P( E, A, B, C, D, R(41) );
-	P( D, E, A, B, C, R(42) );
-	P( C, D, E, A, B, R(43) );
-	P( B, C, D, E, A, R(44) );
-	P( A, B, C, D, E, R(45) );
-	P( E, A, B, C, D, R(46) );
-	P( D, E, A, B, C, R(47) );
-	P( C, D, E, A, B, R(48) );
-	P( B, C, D, E, A, R(49) );
-	P( A, B, C, D, E, R(50) );
-	P( E, A, B, C, D, R(51) );
-	P( D, E, A, B, C, R(52) );
-	P( C, D, E, A, B, R(53) );
-	P( B, C, D, E, A, R(54) );
-	P( A, B, C, D, E, R(55) );
-	P( E, A, B, C, D, R(56) );
-	P( D, E, A, B, C, R(57) );
-	P( C, D, E, A, B, R(58) );
-	P( B, C, D, E, A, R(59) );
-
-#undef K
-#undef F
-
-#define F(x,y,z)	(x ^ y ^ z)
-#define K		0xCA62C1D6
-
-	P( A, B, C, D, E, R(60) );
-	P( E, A, B, C, D, R(61) );
-	P( D, E, A, B, C, R(62) );
-	P( C, D, E, A, B, R(63) );
-	P( B, C, D, E, A, R(64) );
-	P( A, B, C, D, E, R(65) );
-	P( E, A, B, C, D, R(66) );
-	P( D, E, A, B, C, R(67) );
-	P( C, D, E, A, B, R(68) );
-	P( B, C, D, E, A, R(69) );
-	P( A, B, C, D, E, R(70) );
-	P( E, A, B, C, D, R(71) );
-	P( D, E, A, B, C, R(72) );
-	P( C, D, E, A, B, R(73) );
-	P( B, C, D, E, A, R(74) );
-	P( A, B, C, D, E, R(75) );
-	P( E, A, B, C, D, R(76) );
-	P( D, E, A, B, C, R(77) );
-	P( C, D, E, A, B, R(78) );
-	P( B, C, D, E, A, R(79) );
-
-#undef K
-#undef F
-
-	output[0] += A;
-	output[1] += B;
-	output[2] += C;
-	output[3] += D;
-	output[4] += E;
-}
-
-inline void sha1_initV(uint4 *output) {
-	output[0] = H1;
-	output[1] = H2;
-	output[2] = H3;
-	output[3] = H4;
-	output[4] = H5;
-}
-
-inline void sha1_finalV(uint4 *block, uint4 *output, const uint tot_len)
-{
-	uint len = ((tot_len & 63) >> 2) + 1;
-
-	LASTCHAR_BE(block, tot_len & 63, 0x80);
-
-	if (len > 13) {
-		sha1_blockV(block, output);
-		len = 0;
-	}
-	while (len < 15)
-		block[len++] = 0;
-	block[15] = tot_len << 3;
-	sha1_blockV(block, output);
-}
-
-/* len is given in words, not bytes */
-inline void memcpy32V(uint4 *d, const uint4 *s, uint len)
-{
-	while(len--)
-		*d++ = *s++;
-}
-#else
-/* raw'n'lean sha1, context kept in output buffer */
-void sha1_block(uint *W, uint *output) {
+inline void sha1_block(uint *W, uint *output) {
 	uint A, B, C, D, E, temp;
 
 	A = output[0];
@@ -263,10 +106,10 @@ void sha1_block(uint *W, uint *output) {
 		b = rotate(b, 30U); \
 	}
 
-#ifdef NVIDIA
-#define F(x,y,z)	(z ^ (x & (y ^ z)))
-#else
+#ifdef USE_BITSELECT
 #define F(x,y,z)	bitselect(z, y, x)
+#else
+#define F(x,y,z)	(z ^ (x & (y ^ z)))
 #endif
 
 #define K		0x5A827999
@@ -322,10 +165,10 @@ void sha1_block(uint *W, uint *output) {
 #undef K
 #undef F
 
-#ifdef NVIDIA
-#define F(x,y,z)	((x & y) | (z & (x | y)))
-#else
+#ifdef USE_BITSELECT
 #define F(x,y,z)	(bitselect(x, y, z) ^ bitselect(x, 0U, y))
+#else
+#define F(x,y,z)	((x & y) | (z & (x | y)))
 #endif
 #define K		0x8F1BBCDC
 
@@ -387,422 +230,199 @@ void sha1_block(uint *W, uint *output) {
 	output[4] += E;
 }
 
-inline void sha1_init(uint *output) {
-	output[0] = H1;
-	output[1] = H2;
-	output[2] = H3;
-	output[3] = H4;
-	output[4] = H5;
-}
+#define sha1_init(output) {	  \
+		output[0] = H1; \
+		output[1] = H2; \
+		output[2] = H3; \
+		output[3] = H4; \
+		output[4] = H5; \
+	}
 
-inline void sha1_final(uint *block, uint *output, const uint tot_len)
+inline void sha1_final(uint *W, uint *output, const uint tot_len)
 {
 	uint len = ((tot_len & 63) >> 2) + 1;
 
-	LASTCHAR_BE(block, tot_len & 63, 0x80);
+	LASTCHAR_BE(W, tot_len & 63, 0x80);
 
+#if UNICODE_LENGTH > 45
 	if (len > 13) {
-		sha1_block(block, output);
+		sha1_block(W, output);
 		len = 0;
 	}
+#endif
 	while (len < 15)
-		block[len++] = 0;
-	block[15] = tot_len << 3;
-	sha1_block(block, output);
+		W[len++] = 0;
+	W[15] = tot_len << 3;
+	sha1_block(W, output);
 }
-#endif
 
-#ifdef NVIDIA
-#define AMD_V
-inline void memcpy32(uint *d, const uint *s, uint len)
-{
-	while(len--)
-		*d++ = *s++;
-}
-#else
-#define AMD_V	(uint4*)&
-inline void memcpy32(uint4 *d, const uint4 *s, uint len)
-{
-	while(len >= 4) {
-		*d++ = *s++;
-		len -= 4;
-	}
-	while(len--)
-		*(uint*)d++ = *(uint*)s++;
-}
-#endif
-
-#ifdef RAR_VECTORIZE
-#warning Notice: Using fixed length and vectorized kernel
-#define SetCryptKeysV	SetCryptKeys
-#else
-#ifdef DEBUG
-#warning Notice: Using variable length and non-vectorized kernel
-#endif
-/* The double block[] buffer saves us a LOT of branching, 20% speedup. */
-__kernel void SetCryptKeys(
+__kernel void RarInit(
 	const __global uint *unicode_pw,
 	const __global uint *pw_len,
 	__constant uint *salt,
-	__global uint *aes_key, __global uint *aes_iv)
+	__global uint *RawBuf,
+	__global uint *OutputBuf,
+	__global uint *round)
 {
-	uint i, j, len, b;
+	uint gid = get_global_id(0);
+	__global uint *RawPsw = &RawBuf[gid * (UNICODE_LENGTH + 8) / 4];
+	__global uint *output = &OutputBuf[gid * 5];
+	uint pwlen = pw_len[gid];
+	uint i;
+
+	/* Copy to 1x buffer */
+	for (i = 0; i < (pwlen + 3) >> 2; i++)
+		RawPsw[i] = SWAP32(unicode_pw[gid * UNICODE_LENGTH / 4 + i]);
+	for (i = 0; i < 8; i++)
+		PUTCHAR_BE_G(RawPsw, pwlen + i, ((__constant uchar*)salt)[i]);
+	round[gid] = 0;
+	sha1_init(output);
+}
+
+__kernel void RarGetIV(
+	const __global uint *pw_len,
+	const __global uint *RawBuf,
+	__global uint *OutputBuf,
+	__global uint *round_p,
+	__global uint *aes_iv)
+{
+	uint gid = get_global_id(0);
+	uint block[16], output[5];
+	uint pwlen = pw_len[gid];
+	uint round = round_p[gid];
+	uint i;
+
+	for (i = 0; i < 5; i++)
+		output[i] = OutputBuf[gid * 5 + i];
+	for (i = 0; i < (UNICODE_LENGTH + 8) / 4; i++)
+		block[i] = RawBuf[gid * (UNICODE_LENGTH + 8) / 4 + i];
+
+	PUTCHAR_BE(block, pwlen + 8, round & 255);
+	PUTCHAR_BE(block, pwlen + 9, (round >> 8) & 255);
+	PUTCHAR_BE(block, pwlen + 10, round >> 16);
+
+#ifdef APPLE
+	/* This is the weirdest workaround. Using the sha1_final()
+	   works perfectly fine in the RarFinal() subkernel below. */
+	PUTCHAR_BE(block, pwlen + 11, 0x80);
+	for (i = pwlen + 12; i < 56; i++)
+		PUTCHAR_BE(block, pwlen + i, 0);
+	block[14] = 0;
+	block[15] = ((pwlen + 8 + 3) * (round + 1)) << 3;
+	sha1_block(block, output);
+#else
+	sha1_final(block, output, (pwlen + 8 + 3) * (round + 1));
+#endif
+	PUTCHAR_G(aes_iv, gid * 16 + (round >> 14), GETCHAR(output, 16));
+}
+
+__kernel void RarHashLoop(
+	const __global uint *pw_len,
+	__global uint *round_p,
+	const __global uint *RawBuf,
+	__global uint *OutputBuf
+#if gpu_nvidia(DEVICE_INFO)
+	, __local uint *LocBuf
+#endif
+	)
+{
+	uint gid = get_global_id(0);
 	uint block[2][16];
 	uint output[5];
-	uint gid = get_global_id(0);
+#if gpu_nvidia(DEVICE_INFO)
+	__local uint *RawPsw = &LocBuf[get_local_id(0) * (UNICODE_LENGTH + 8) / 4];
+#else
 	uint RawPsw[(UNICODE_LENGTH + 8) / 4];
-	uint pwlen = pw_len[gid];
+#endif
+	uint blocklen = pw_len[gid] + 11;
+	uint round = round_p[gid];
+	uint i;
 
-	/* Copy to fast memory */
-	RawPsw[0] = SWAP32(unicode_pw[gid * PLAINTEXT_LENGTH / 2]);
-	for (i = 1; i < (pwlen + 3) >> 2; i++)
-		RawPsw[i] = SWAP32(unicode_pw[gid * PLAINTEXT_LENGTH / 2 + i]);
-#pragma unroll 8
-	for (i = 0; i < 8; i++)
-		PUTCHAR_BE(RawPsw, pwlen + i, ((__constant uchar*)salt)[i]);
-	pwlen += 8;
+	for (i = 0; i < (UNICODE_LENGTH + 8) / 4; i++)
+		RawPsw[i] = RawBuf[gid * (UNICODE_LENGTH + 8) / 4 + i];
 
-	b = len = 0;
-	sha1_init(output);
+	for (i = 0; i < 5; i++)
+		output[i] = OutputBuf[gid * 5 + i];
 
-	/* At odd characters lengths, aligment is 01230123
-	 * At even lengths, it is 03210321 */
-	for (j = 0; j < ROUNDS; j++)
-	{
-		switch (len & 3) {
-		case 0:	/* 32-bit aligned! */
-			block[0][((len >> 2) + 0) & 31] = RawPsw[0];
-			block[0][((len >> 2) + 1) & 31] = RawPsw[1];
-			block[0][((len >> 2) + 2) & 31] = RawPsw[2];
-			for (i = 3; i < (pwlen + 3) >> 2; i++)
-				block[0][((len >> 2) + i) & 31] = RawPsw[i];
-			break;
-		case 1:	/* unaligned mod 1 */
-			PUTCHAR_BE(block[0], (len + 0) & 127, GETCHAR_BE(RawPsw, 0));
-			PUTCHAR_BE(block[0], (len + 1) & 127, GETCHAR_BE(RawPsw, 1));
-			PUTCHAR_BE(block[0], (len + 2) & 127, GETCHAR_BE(RawPsw, 2));
-			block[0][((len >> 2) + 0 + 1) & 31] = (RawPsw[0] << 24) + (RawPsw[1] >> 8);
-			block[0][((len >> 2) + 1 + 1) & 31] = (RawPsw[1] << 24) + (RawPsw[2] >> 8);
-			for (i = 2; i < ((pwlen + 3) >> 2) - 1; i++)
-				block[0][((len >> 2) + i + 1) & 31] = (RawPsw[i] << 24) + (RawPsw[i + 1] >> 8);
-			block[0][((len >> 2) + i + 1) & 31] = (RawPsw[i] << 24);
-			break;
-		case 2:	/* unaligned mod 2 */
-			PUTCHAR_BE(block[0], (len + 0) & 127, GETCHAR_BE(RawPsw, 0));
-			PUTCHAR_BE(block[0], (len + 1) & 127, GETCHAR_BE(RawPsw, 1));
-			block[0][((len >> 2) + 0 + 1) & 31] = (RawPsw[0] << 16) + (RawPsw[1] >> 16);
-			block[0][((len >> 2) + 1 + 1) & 31] = (RawPsw[1] << 16) + (RawPsw[2] >> 16);
-			for (i = 2; i < ((pwlen + 3) >> 2) - 1; i++)
-				block[0][((len >> 2) + i + 1) & 31] = (RawPsw[i] << 16) + (RawPsw[i + 1] >> 16);
-			block[0][((len >> 2) + i + 1) & 31] = (RawPsw[i] << 16);
-			break;
-		case 3:	/* unaligned mod 3 */
-			PUTCHAR_BE(block[0], (len + 0) & 127, GETCHAR_BE(RawPsw, 0));
-			block[0][((len >> 2) + 0 + 1) & 31] = (RawPsw[0] << 8) + (RawPsw[1] >> 24);
-			block[0][((len >> 2) + 1 + 1) & 31] = (RawPsw[1] << 8) + (RawPsw[2] >> 24);
-			for (i = 2; i < ((pwlen + 3) >> 2) - 1; i++)
-				block[0][((len >> 2) + i + 1) & 31] = (RawPsw[i] << 8) + (RawPsw[i + 1] >> 24);
-			block[0][((len >> 2) + i + 1) & 31] = (RawPsw[i] << 8);
-			break;
-		}
-		len += pwlen;
+	for (i = 0; i < HASH_LOOPS; i++) {
+		uint len = 0, b = 0, j;
 
-		/* Serial */
-		PUTCHAR_BE(block[0], len & 127, j & 0xff);
-		PUTCHAR_BE(block[0], (len + 1) & 127, (j >> 8) & 0xff);
-		PUTCHAR_BE(block[0], (len + 2) & 127, j >> 16);
-		len += 3;
+		for (j = 0; j < blocklen; j++) {
+			do {
+				/* At odd character lengths, alignment is 01230123
+				 * At even lengths, it is 03210321 */
+				switch (len & 3) {
+					uint k;
 
-		/* If we have a full buffer, submit it and switch! */
-		if ((len & 64) != (b << 6)) {
+				case 0: /* 32-bit aligned! */
+					block[0][((len >> 2) + 0) & 31] = RawPsw[0];
+					block[0][((len >> 2) + 1) & 31] = RawPsw[1];
+					block[0][((len >> 2) + 2) & 31] = RawPsw[2];
+					for (k = 3; k < blocklen >> 2; k++)
+						block[0][((len >> 2) + k) & 31] = RawPsw[k];
+					break;
+				case 1: /* unaligned mod 1 */
+					PUTCHAR_BE(block[0], (len + 0) & 127, GETCHAR_BE(RawPsw, 0));
+					PUTCHAR_BE(block[0], (len + 1) & 127, GETCHAR_BE(RawPsw, 1));
+					PUTCHAR_BE(block[0], (len + 2) & 127, GETCHAR_BE(RawPsw, 2));
+					block[0][((len >> 2) + 0 + 1) & 31] = (RawPsw[0] << 24) + (RawPsw[1] >> 8);
+					block[0][((len >> 2) + 1 + 1) & 31] = (RawPsw[1] << 24) + (RawPsw[2] >> 8);
+					for (k = 2; k < (blocklen >> 2) - 1; k++)
+						block[0][((len >> 2) + k + 1) & 31] = (RawPsw[k] << 24) + (RawPsw[k + 1] >> 8);
+					block[0][((len >> 2) + k + 1) & 31] = (RawPsw[k] << 24);
+					break;
+				case 2: /* unaligned mod 2 */
+					PUTCHAR_BE(block[0], (len + 0) & 127, GETCHAR_BE(RawPsw, 0));
+					PUTCHAR_BE(block[0], (len + 1) & 127, GETCHAR_BE(RawPsw, 1));
+					block[0][((len >> 2) + 0 + 1) & 31] = (RawPsw[0] << 16) + (RawPsw[1] >> 16);
+					block[0][((len >> 2) + 1 + 1) & 31] = (RawPsw[1] << 16) + (RawPsw[2] >> 16);
+					for (k = 2; k < (blocklen >> 2) - 1; k++)
+						block[0][((len >> 2) + k + 1) & 31] = (RawPsw[k] << 16) + (RawPsw[k + 1] >> 16);
+					block[0][((len >> 2) + k + 1) & 31] = (RawPsw[k] << 16);
+					break;
+				case 3: /* unaligned mod 3 */
+					PUTCHAR_BE(block[0], (len + 0) & 127, GETCHAR_BE(RawPsw, 0));
+					block[0][((len >> 2) + 0 + 1) & 31] = (RawPsw[0] << 8) + (RawPsw[1] >> 24);
+					block[0][((len >> 2) + 1 + 1) & 31] = (RawPsw[1] << 8) + (RawPsw[2] >> 24);
+					for (k = 2; k < (blocklen >> 2) - 1; k++)
+						block[0][((len >> 2) + k + 1) & 31] = (RawPsw[k] << 8) + (RawPsw[k + 1] >> 24);
+					block[0][((len >> 2) + k + 1) & 31] = (RawPsw[k] << 8);
+					break;
+				}
+				len += blocklen;
+
+				/* Serial */
+				PUTCHAR_BE(block[0], (len - 3) & 127, round & 0xff);
+				PUTCHAR_BE(block[0], (len - 2) & 127, (round >> 8) & 0xff);
+				PUTCHAR_BE(block[0], (len - 1) & 127, round >> 16);
+
+				round++;
+			} while ((len & 64) == (b << 6));
 			sha1_block(block[b], output);
 			b = 1 - b;
 		}
-
-		/* Every 16K'th round, we do a final and pick one byte of IV */
-		if (j % (ROUNDS >> 4) == 0)
-		{
-			uint tempout[5];
-
-			/* hardcoding 16 here is faster than considering less */
-			memcpy32(AMD_V block[1-b], AMD_V block[b], 16);
-			memcpy32(AMD_V tempout, AMD_V output, 5);
-
-			sha1_final(block[1-b], tempout, len);
-
-			PUTCHAR(aes_iv, gid * 16 + (j >> 14), GETCHAR(tempout, 16));
-		}
 	}
-	sha1_final(block[b], output, len);
+	round_p[gid] = round;
 
-	// Non-endian-swapping copy
-#ifdef NVIDIA
-	aes_key[gid * 4] = output[0];
-	aes_key[gid * 4 + 1] = output[1];
-	aes_key[gid * 4 + 2] = output[2];
-	aes_key[gid * 4 + 3] = output[3];
-#else
-	((__global uint4*)aes_key)[gid] = ((uint4*)output)[0];
-#endif
+	for (i = 0; i < 5; i++)
+		OutputBuf[gid * 5 + i] = output[i];
 }
-#endif
 
-#ifdef RAR_VECTORIZE
-__kernel /*__attribute__((vec_type_hint(int4)))*/ void SetCryptKeysV(
-	const __global uint *unicode_pw,
+__kernel void RarFinal(
 	const __global uint *pw_len,
-	__constant uint *salt,
-	__global uint *aes_key, __global uint *aes_iv)
+	__global uint *OutputBuf,
+	__global uint *aes_key)
 {
-	uint i, j, len, b;
-	uint4 block[2][16];
-	uint4 output[5];
-	uint gid = 4 * get_global_id(0);
-	uint4 RawPsw[(UNICODE_LENGTH + 8) / 4];
-#define pwlen (2 * FIXED_LEN)
+	uint gid = get_global_id(0);
+	uint *block[16], output[5];
+	uint i;
 
-	/* Copy to fast memory */
-	RawPsw[0].s0 = SWAP32(unicode_pw[gid * PLAINTEXT_LENGTH / 2]);
-	RawPsw[0].s1 = SWAP32(unicode_pw[(gid + 1) * PLAINTEXT_LENGTH / 2]);
-	RawPsw[0].s2 = SWAP32(unicode_pw[(gid + 2) * PLAINTEXT_LENGTH / 2]);
-	RawPsw[0].s3 = SWAP32(unicode_pw[(gid + 3) * PLAINTEXT_LENGTH / 2]);
-	for (i = 1; i < (pwlen + 3) >> 2; i++) {
-		RawPsw[i].s0 = SWAP32(unicode_pw[gid * PLAINTEXT_LENGTH / 2 + i]);
-		RawPsw[i].s1 = SWAP32(unicode_pw[(gid + 1) * PLAINTEXT_LENGTH / 2 + i]);
-		RawPsw[i].s2 = SWAP32(unicode_pw[(gid + 2) * PLAINTEXT_LENGTH / 2 + i]);
-		RawPsw[i].s3 = SWAP32(unicode_pw[(gid + 3) * PLAINTEXT_LENGTH / 2 + i]);
-	}
-#pragma unroll 8
-	for (i = 0; i < 8; i++)
-		PUTCHAR_BE(RawPsw, pwlen + i, ((__constant uchar*)salt)[i]);
-#undef pwlen
-#define pwlen ((2 * FIXED_LEN) + 8)
+	for (i = 0; i < 5; i++)
+		output[i] = OutputBuf[gid * 5 + i];
 
-	b = len = 0;
-	sha1_initV(output);
+	sha1_final((uint*)block, (uint*)output, (pw_len[gid] + 8 + 3) * ROUNDS);
 
-	/* At odd characters lengths, aligment is 01230123
-	 * At even lengths, it is 03210321 */
-	for (j = 0; j < ROUNDS; j++)
-	{
-#ifdef NVIDIA
-		/* First is always 32-bit aligned */
-		block[0][((len >> 2) + 0) & 31] = RawPsw[0];
-		block[0][((len >> 2) + 1) & 31] = RawPsw[1];
-		block[0][((len >> 2) + 2) & 31] = RawPsw[2];
-		for (i = 3; i < (pwlen + 3) >> 2; i++)
-			block[0][((len >> 2) + i) & 31] = RawPsw[i];
-		len += pwlen;
-
-		/* Serial */
-		PUTCHAR_BE(block[0], len & 127, j & 0xff);
-		PUTCHAR_BE(block[0], (len + 1) & 127, (j >> 8) & 0xff);
-		PUTCHAR_BE(block[0], (len + 2) & 127, j >> 16);
-		len += 3;
-
-		/* If we have a full buffer, submit it and switch! */
-		if ((len & 64) != (b << 6)) {
-			sha1_blockV(block[b], output);
-			b = 1 - b;
-		}
-
-		/* Every 16K'th round, we do a final and pick one byte of IV */
-		if (j % (ROUNDS >> 4) == 0)
-		{
-			uint4 tempout[5];
-
-			/* hardcoding 16 here is faster than considering less */
-			memcpy32V(block[1 - b], block[b], 16);
-			memcpy32V(tempout, output, 5);
-
-			sha1_finalV(block[1 - b], tempout, len);
-
-			PUTCHAR(aes_iv, gid * 16 + (j >> 14), (uchar)tempout[4].s0);
-			PUTCHAR(aes_iv, (gid + 1) * 16 + (j >> 14), (uchar)tempout[4].s1);
-			PUTCHAR(aes_iv, (gid + 2) * 16 + (j >> 14), (uchar)tempout[4].s2);
-			PUTCHAR(aes_iv, (gid + 3) * 16 + (j >> 14), (uchar)tempout[4].s3);
-		}
-
-		j++;
-
-#if (FIXED_LEN & 1) == 0
-		/* Second is aligned mod 3 */
-		PUTCHAR_BE(block[0], (len + 0) & 127, GETCHAR_BE(RawPsw, 0));
-		block[0][((len >> 2) + 0 + 1) & 31] = (RawPsw[0] << 8) + (RawPsw[1] >> 24);
-		block[0][((len >> 2) + 1 + 1) & 31] = (RawPsw[1] << 8) + (RawPsw[2] >> 24);
-		for (i = 2; i < ((pwlen + 3) >> 2) - 1; i++)
-			block[0][((len >> 2) + i + 1) & 31] = (RawPsw[i] << 8) + (RawPsw[i + 1] >> 24);
-		block[0][((len >> 2) + i + 1) & 31] = (RawPsw[i] << 8);
-#else
-		/* Second is aligned mod 1 */
-		PUTCHAR_BE(block[0], (len + 0) & 127, GETCHAR_BE(RawPsw, 0));
-		PUTCHAR_BE(block[0], (len + 1) & 127, GETCHAR_BE(RawPsw, 1));
-		PUTCHAR_BE(block[0], (len + 2) & 127, GETCHAR_BE(RawPsw, 2));
-		block[0][((len >> 2) + 0 + 1) & 31] = (RawPsw[0] << 24) + (RawPsw[1] >> 8);
-		block[0][((len >> 2) + 1 + 1) & 31] = (RawPsw[1] << 24) + (RawPsw[2] >> 8);
-		for (i = 2; i < ((pwlen + 3) >> 2) - 1; i++)
-			block[0][((len >> 2) + i + 1) & 31] = (RawPsw[i] << 24) + (RawPsw[i + 1] >> 8);
-		block[0][((len >> 2) + i + 1) & 31] = (RawPsw[i] << 24);
-#endif
-		len += pwlen;
-
-		/* Serial */
-		PUTCHAR_BE(block[0], len & 127, j & 0xff);
-		PUTCHAR_BE(block[0], (len + 1) & 127, (j >> 8) & 0xff);
-		PUTCHAR_BE(block[0], (len + 2) & 127, j >> 16);
-		len += 3;
-
-		/* If we have a full buffer, submit it and switch! */
-		if ((len & 64) != (b << 6)) {
-			sha1_blockV(block[b], output);
-			b = 1 - b;
-		}
-
-		j++;
-
-		/* Third is always aligned at 16-bit */
-		PUTCHAR_BE(block[0], (len + 0) & 127, GETCHAR_BE(RawPsw, 0));
-		PUTCHAR_BE(block[0], (len + 1) & 127, GETCHAR_BE(RawPsw, 1));
-		block[0][((len >> 2) + 0 + 1) & 31] = (RawPsw[0] << 16) + (RawPsw[1] >> 16);
-		block[0][((len >> 2) + 1 + 1) & 31] = (RawPsw[1] << 16) + (RawPsw[2] >> 16);
-		for (i = 2; i < ((pwlen + 3) >> 2) - 1; i++)
-			block[0][((len >> 2) + i + 1) & 31] = (RawPsw[i] << 16) + (RawPsw[i + 1] >> 16);
-		block[0][((len >> 2) + i + 1) & 31] = (RawPsw[i] << 16);
-		len += pwlen;
-
-		/* Serial */
-		PUTCHAR_BE(block[0], len & 127, j & 0xff);
-		PUTCHAR_BE(block[0], (len + 1) & 127, (j >> 8) & 0xff);
-		PUTCHAR_BE(block[0], (len + 2) & 127, j >> 16);
-		len += 3;
-
-		/* If we have a full buffer, submit it and switch! */
-		if ((len & 64) != (b << 6)) {
-			sha1_blockV(block[b], output);
-			b = 1 - b;
-		}
-
-		j++;
-
-#if (FIXED_LEN & 1) == 0
-		/* Fourth is aligned mod 1 */
-		PUTCHAR_BE(block[0], (len + 0) & 127, GETCHAR_BE(RawPsw, 0));
-		PUTCHAR_BE(block[0], (len + 1) & 127, GETCHAR_BE(RawPsw, 1));
-		PUTCHAR_BE(block[0], (len + 2) & 127, GETCHAR_BE(RawPsw, 2));
-		block[0][((len >> 2) + 0 + 1) & 31] = (RawPsw[0] << 24) + (RawPsw[1] >> 8);
-		block[0][((len >> 2) + 1 + 1) & 31] = (RawPsw[1] << 24) + (RawPsw[2] >> 8);
-		for (i = 2; i < ((pwlen + 3) >> 2) - 1; i++)
-			block[0][((len >> 2) + i + 1) & 31] = (RawPsw[i] << 24) + (RawPsw[i + 1] >> 8);
-		block[0][((len >> 2) + i + 1) & 31] = (RawPsw[i] << 24);
-#else
-		/* Fourth is aligned mod 3 */
-		PUTCHAR_BE(block[0], (len + 0) & 127, GETCHAR_BE(RawPsw, 0));
-		block[0][((len >> 2) + 0 + 1) & 31] = (RawPsw[0] << 8) + (RawPsw[1] >> 24);
-		block[0][((len >> 2) + 1 + 1) & 31] = (RawPsw[1] << 8) + (RawPsw[2] >> 24);
-		for (i = 2; i < ((pwlen + 3) >> 2) - 1; i++)
-			block[0][((len >> 2) + i + 1) & 31] = (RawPsw[i] << 8) + (RawPsw[i + 1] >> 24);
-		block[0][((len >> 2) + i + 1) & 31] = (RawPsw[i] << 8);
-#endif
-		len += pwlen;
-
-		/* Serial */
-		PUTCHAR_BE(block[0], len & 127, j & 0xff);
-		PUTCHAR_BE(block[0], (len + 1) & 127, (j >> 8) & 0xff);
-		PUTCHAR_BE(block[0], (len + 2) & 127, j >> 16);
-		len += 3;
-
-		/* If we have a full buffer, submit it and switch! */
-		if ((len & 64) != (b << 6)) {
-			sha1_blockV(block[b], output);
-			b = 1 - b;
-		}
-#else
-		switch (len & 3) {
-		case 0:	/* 32-bit aligned! */
-			block[0][((len >> 2) + 0) & 31] = RawPsw[0];
-			block[0][((len >> 2) + 1) & 31] = RawPsw[1];
-			block[0][((len >> 2) + 2) & 31] = RawPsw[2];
-			for (i = 3; i < (pwlen + 3) >> 2; i++)
-				block[0][((len >> 2) + i) & 31] = RawPsw[i];
-			break;
-		case 1:	/* unaligned mod 1 */
-			PUTCHAR_BE(block[0], (len + 0) & 127, GETCHAR_BE(RawPsw, 0));
-			PUTCHAR_BE(block[0], (len + 1) & 127, GETCHAR_BE(RawPsw, 1));
-			PUTCHAR_BE(block[0], (len + 2) & 127, GETCHAR_BE(RawPsw, 2));
-			block[0][((len >> 2) + 0 + 1) & 31] = (RawPsw[0] << 24) + (RawPsw[1] >> 8);
-			block[0][((len >> 2) + 1 + 1) & 31] = (RawPsw[1] << 24) + (RawPsw[2] >> 8);
-			for (i = 2; i < ((pwlen + 3) >> 2) - 1; i++)
-				block[0][((len >> 2) + i + 1) & 31] = (RawPsw[i] << 24) + (RawPsw[i + 1] >> 8);
-			block[0][((len >> 2) + i + 1) & 31] = (RawPsw[i] << 24);
-			break;
-		case 2:	/* unaligned mod 2 */
-			PUTCHAR_BE(block[0], (len + 0) & 127, GETCHAR_BE(RawPsw, 0));
-			PUTCHAR_BE(block[0], (len + 1) & 127, GETCHAR_BE(RawPsw, 1));
-			block[0][((len >> 2) + 0 + 1) & 31] = (RawPsw[0] << 16) + (RawPsw[1] >> 16);
-			block[0][((len >> 2) + 1 + 1) & 31] = (RawPsw[1] << 16) + (RawPsw[2] >> 16);
-			for (i = 2; i < ((pwlen + 3) >> 2) - 1; i++)
-				block[0][((len >> 2) + i + 1) & 31] = (RawPsw[i] << 16) + (RawPsw[i + 1] >> 16);
-			block[0][((len >> 2) + i + 1) & 31] = (RawPsw[i] << 16);
-			break;
-		case 3:	/* unaligned mod 3 */
-			PUTCHAR_BE(block[0], (len + 0) & 127, GETCHAR_BE(RawPsw, 0));
-			block[0][((len >> 2) + 0 + 1) & 31] = (RawPsw[0] << 8) + (RawPsw[1] >> 24);
-			block[0][((len >> 2) + 1 + 1) & 31] = (RawPsw[1] << 8) + (RawPsw[2] >> 24);
-			for (i = 2; i < ((pwlen + 3) >> 2) - 1; i++)
-				block[0][((len >> 2) + i + 1) & 31] = (RawPsw[i] << 8) + (RawPsw[i + 1] >> 24);
-			block[0][((len >> 2) + i + 1) & 31] = (RawPsw[i] << 8);
-			break;
-		}
-		len += pwlen;
-
-		/* Serial */
-		PUTCHAR_BE(block[0], len & 127, j & 0xff);
-		PUTCHAR_BE(block[0], (len + 1) & 127, (j >> 8) & 0xff);
-		PUTCHAR_BE(block[0], (len + 2) & 127, j >> 16);
-		len += 3;
-
-		/* If we have a full buffer, submit it and switch! */
-		if ((len & 64) != (b << 6)) {
-			sha1_blockV(block[b], output);
-			b = 1 - b;
-		}
-
-		/* Every 16K'th round, we do a final and pick one byte of IV */
-		if (j % (ROUNDS >> 4) == 0)
-		{
-			uint4 tempout[5];
-
-			/* hardcoding 16 here is faster than considering less */
-			memcpy32V(block[1 - b], block[b], 16);
-			memcpy32V(tempout, output, 5);
-
-			sha1_finalV(block[1 - b], tempout, len);
-
-			PUTCHAR(aes_iv, gid * 16 + (j >> 14), (uchar)tempout[4].s0);
-			PUTCHAR(aes_iv, (gid + 1) * 16 + (j >> 14), (uchar)tempout[4].s1);
-			PUTCHAR(aes_iv, (gid + 2) * 16 + (j >> 14), (uchar)tempout[4].s2);
-			PUTCHAR(aes_iv, (gid + 3) * 16 + (j >> 14), (uchar)tempout[4].s3);
-		}
-#endif
-	}
-	sha1_finalV(block[b], output, len);
-
-	// Non-endian-swapping copy
-	aes_key[gid * 4] = output[0].s0;
-	aes_key[gid * 4 + 1] = output[1].s0;
-	aes_key[gid * 4 + 2] = output[2].s0;
-	aes_key[gid * 4 + 3] = output[3].s0;
-	aes_key[gid * 4 + 4] = output[0].s1;
-	aes_key[gid * 4 + 5] = output[1].s1;
-	aes_key[gid * 4 + 6] = output[2].s1;
-	aes_key[gid * 4 + 7] = output[3].s1;
-	aes_key[gid * 4 + 8] = output[0].s2;
-	aes_key[gid * 4 + 9] = output[1].s2;
-	aes_key[gid * 4 + 10] = output[2].s2;
-	aes_key[gid * 4 + 11] = output[3].s2;
-	aes_key[gid * 4 + 12] = output[0].s3;
-	aes_key[gid * 4 + 13] = output[1].s3;
-	aes_key[gid * 4 + 14] = output[2].s3;
-	aes_key[gid * 4 + 15] = output[3].s3;
+	// Still no endian-swap
+	for (i = 0; i < 4; i++)
+		aes_key[gid * 4 + i] = output[i];
 }
-#endif

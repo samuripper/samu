@@ -3,7 +3,7 @@
  * in 2011. No copyright is claimed, and the software is hereby
  * placed in the public domain. In case this attempt to disclaim
  * copyright and place the software in the public domain is deemed
- * null and void, then the software is Copyright © 2011 Jim Fougeron
+ * null and void, then the software is Copyright (c) 2011 Jim Fougeron
  * and it is hereby released to the general public under the following
  * terms:
  *
@@ -165,7 +165,6 @@ static int mediawiki_valid(char *ciphertext, struct fmt_main *self)
 		static char Ex[(1+1+1+5+1+MD5_HEX_SIZE)+1];
 		sprintf(Ex, "$B$000%s%s$%s", options.regen_lost_salts>3?"0":"", options.regen_lost_salts>4?"0":"", ciphertext);
 		ciphertext = Ex;
-		i = strlen(ciphertext);
 	}
 
 	if (strncmp(ciphertext, "$B$", 3) != 0) {

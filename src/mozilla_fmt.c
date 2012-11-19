@@ -1,7 +1,7 @@
 /* Mozilla cracker patch for JtR. Hacked together during March of 2012 by
  * Dhiru Kholia <dhiru.kholia at gmail.com>
  *
- * This software is Copyright © 2012, Dhiru Kholia <dhiru.kholia at gmail.com>
+ * This software is Copyright (c) 2012, Dhiru Kholia <dhiru.kholia at gmail.com>
  * and it is hereby released under GPL license.
  *
  * Uses code from FireMasterLinux project.
@@ -47,7 +47,7 @@
 #define FORMAT_NAME		"Mozilla SHA-1 3DES"
 #define ALGORITHM_NAME		"32/" ARCH_BITS_STR
 #define BENCHMARK_COMMENT	""
-#define BENCHMARK_LENGTH	0
+#define BENCHMARK_LENGTH	-1
 #define PLAINTEXT_LENGTH	16
 #define BINARY_SIZE		16
 #define SALT_SIZE		sizeof(*salt_struct)
@@ -173,7 +173,7 @@ static void *get_salt(char *ciphertext)
 	SHA1_Init(&salt_struct->pctx);
 	SHA1_Update(&salt_struct->pctx, salt_struct->keyCrackData.globalSalt, salt_struct->keyCrackData.globalSaltLen);
 
-	free(keeptr);
+	MEM_FREE(keeptr);
 	return (void *)salt_struct;
 }
 

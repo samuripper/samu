@@ -2,8 +2,9 @@
  * Extract RAR archives
  *
  * Modified for JtR, (c) magnum 2012. This code use a memory buffer instead
- * of a file handle. It does not store the inflated data, it just CRC's it.
- * Support for older RAR versions was stripped. Autoconf stuff was removed.
+ * of a file handle, and decrypts while reading. It does not store inflated
+ * data, it just CRC's it. Support for older RAR versions was stripped.
+ * Autoconf stuff was removed.
  *
  * Copyright (C) 2005-2006 trog@uncon.org
  *
@@ -160,11 +161,26 @@ typedef struct unpack_data_tag
 	int prev_low_dist;
 	int low_dist_rep_count;
 	unsigned char unp_old_table[HUFF_TABLE_SIZE];
-	struct LitDecode LD;
-	struct DistDecode DD;
-	struct LowDistDecode LDD;
-	struct RepDecode RD;
-	struct BitDecode BD;
+	union {
+		struct LitDecode LD;
+		struct Decode D;
+	} LD;
+	union {
+		struct DistDecode DD;
+		struct Decode D;
+	} DD;
+	union {
+		struct LowDistDecode LDD;
+		struct Decode D;
+	} LDD;
+	union {
+		struct RepDecode RD;
+		struct Decode D;
+	} RD;
+	union {
+		struct BitDecode BD;
+		struct Decode D;
+	} BD;
 	unsigned int old_dist[4];
 	unsigned int old_dist_ptr;
 	unsigned int last_dist;
@@ -208,8 +224,11 @@ enum BLOCK_TYPES
 	BLOCK_PPM
 };
 
+// returns one (aligned) char of data regardless where inside it the bit pointer points
 unsigned int rar_get_char(const unsigned char **fd, unpack_data_t *unpack_data);
+// add bits to counters
 void rar_addbits(unpack_data_t *unpack_data, int bits);
+// returns next 16 bits of data
 unsigned int rar_getbits(unpack_data_t *unpack_data);
 int rar_unp_read_buf(const unsigned char **fd, unpack_data_t *unpack_data);
 void rar_unpack_init_data(int solid, unpack_data_t *unpack_data);

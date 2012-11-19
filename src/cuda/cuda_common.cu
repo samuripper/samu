@@ -16,6 +16,8 @@ void HandleError(cudaError_t err, const char *file, int line)
 	if (err != cudaSuccess) {
 		fprintf(stderr, "%s in %s at line %d\n",
 		    cudaGetErrorString(err), file, line);
+		if (err == cudaErrorLaunchOutOfResources)
+			fprintf(stderr, "Try decreasing THREADS in the corresponding cuda*h file. See doc/README-CUDA\n");
 		exit(EXIT_FAILURE);
 	}
 }
@@ -24,27 +26,27 @@ void HandleError(cudaError_t err, const char *file, int line)
 
 static char *human_format(size_t size)
 {
-	char pref[] = { ' ', 'k', 'M', 'G' };
+	char pref[] = { ' ', 'K', 'M', 'G', 'T', 'P', 'E', 'Z', 'Y' };
 	int prefid = 0;
+	static char ret[32];
+
 	while (size > 1024) {
 		size /= 1024;
 		prefid++;
 	}
-	assert(prefid <= 3);
-	static char ret[32];
 	sprintf(ret, "%zd.%zd %cB", size, (size % 1024) / 100, pref[prefid]);
 	return ret;
 }
 
 extern "C" 
-void cuda_init(unsigned int gpu_id)
+void cuda_init(unsigned int cuda_gpu_id)
 {
 	int devices;
 	HANDLE_ERROR(cudaGetDeviceCount(&devices));
-	if (gpu_id < devices && devices > 0)
-		cudaSetDevice(gpu_id);
+	if (cuda_gpu_id < devices && devices > 0)
+		cudaSetDevice(cuda_gpu_id);
 	else {
-		fprintf(stderr, "Invalid CUDA device id = %d\n", gpu_id);
+		fprintf(stderr, "Invalid CUDA device id = %d\n", cuda_gpu_id);
 		exit(1);
 	}
 }
@@ -68,11 +70,20 @@ void cuda_device_list()
 	printf("%d CUDA devices found:\n", devices);
 	for (i = 0; i < devices; i++) {
 		cudaDeviceProp devProp;
+		int arch_cores_sm[] = { 1, 8, 32, 192 };
+
 		cudaGetDeviceProperties(&devProp, i);
 		printf("\nCUDA Device #%d\n", i);
 		printf("\tName:                          %s\n", devProp.name);
+		printf("\tType:                          %s\n",
+		       devProp.integrated ? "integrated" : "discrete");
 		printf("\tCompute capability:            sm_%d%d\n",
 		    devProp.major, devProp.minor);
+		if (devProp.major <= 3)
+		printf("\tNumber of stream processors:   %d (%d x %d)\n",
+		       devProp.multiProcessorCount * arch_cores_sm[devProp.major],
+		       devProp.multiProcessorCount, arch_cores_sm[devProp.major]);
+		else
 		printf("\tNumber of multiprocessors:     %d\n",
 		    devProp.multiProcessorCount);
 		printf("\tClock rate:                    %d Mhz\n",
@@ -84,12 +95,22 @@ void cuda_device_list()
 		    human_format(devProp.sharedMemPerBlock));
 		printf("\tTotal constant memory:         %s\n",
 		    human_format(devProp.totalConstMem));
+		printf("\tL2 cache size                  %s\n",
+		       human_format(devProp.l2CacheSize));
 		printf("\tKernel execution timeout:      %s\n",
 		    (devProp.kernelExecTimeoutEnabled ? "Yes" : "No"));
 		printf("\tConcurrent copy and execution: %s\n",
 		    (devProp.deviceOverlap ? "Yes" : "No"));
+		printf("\tConcurrent kernels support:    %s\n",
+		    (devProp.concurrentKernels ? "Yes" : "No"));
 		printf("\tWarp size:                     %d\n",
 		    devProp.warpSize);
+		printf("\tMax. GPRs/thread block         %d\n",
+		    devProp.regsPerBlock);
+		printf("\tMax. threads per block         %d\n",
+		    devProp.maxThreadsPerBlock);
+		printf("\tMax. resident threads per MP   %d\n",
+		    devProp.maxThreadsPerMultiProcessor);
 		puts("");
 	}
 }

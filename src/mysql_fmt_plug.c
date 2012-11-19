@@ -11,7 +11,7 @@
  * in the first 8byte, so we have to check the full
  * hash.
  *
- * Unbelievable good optimization by Péter Kasza
+ * Unbelievable good optimization by PÃ©ter Kasza
  *
  * http://rycon.hu/
  *
@@ -63,6 +63,7 @@ static struct fmt_tests mysql_tests[] = {
 	{"1eb71cf460712b3e", "http://4tphi.net"},
 	{"28ff8d49159ffbaf", "http://violating.us"},
 	{"5d2e19393cc5ef67", "password"},
+	{"5030573512345671", ""},
 	{NULL}
 };
 

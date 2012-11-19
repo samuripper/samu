@@ -38,11 +38,11 @@
 
 /* Note: some tests will be replaced in init() if running UTF-8 */
 static struct fmt_tests tests[] = {
+	{"M$test2#ab60bdb4493822b175486810ac2abe63", "test2" },
 	{"M$test1#64cd29e36a8431a2b111378564a10631", "test1" },
 	{"M$test1#64cd29e36a8431a2b111378564a10631", "test1" },
 	{"M$test1#64cd29e36a8431a2b111378564a10631", "test1" },
 	{"176a4c2bd45ac73687676c2f09045353", "", {"root"} }, // nullstring password
-	{"M$test2#ab60bdb4493822b175486810ac2abe63", "test2" },
 	{"M$test3#14dd041848e12fc48c0aa7a416a4a00c", "test3" },
 	{"M$test4#b945d24866af4b01a6d89b9d932a153c", "test4" },
 
@@ -194,8 +194,12 @@ static int valid(char *ciphertext, struct fmt_main *self)
 
 	// This is tricky: Max supported salt length is 19 characters of Unicode
 	saltlen = enc_to_utf16(realsalt, 20, (UTF8*)strnzcpy(insalt, &ciphertext[2], l - 2), l - 3);
-	if (saltlen < 0 || saltlen > 19)
-			return 0;
+	if (saltlen < 0 || saltlen > 19) {
+		static int warned = 0;
+		if (warned++ == 1)
+			fprintf(stderr, "Note: One or more hashes rejected due to salt length limitation\n");
+		return 0;
+	}
 
 	return 1;
 }
@@ -284,7 +288,7 @@ static void *get_salt_encoding(char *_ciphertext) {
 	input[md4_size] = 0;
 
 	utf16len = enc_to_utf16(out, 19, input, md4_size);
-	if (utf16len <= 0)
+	if (utf16len < 0)
 		utf16len = strlen16(out);
 
 #if ARCH_LITTLE_ENDIAN

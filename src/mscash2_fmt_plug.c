@@ -63,10 +63,6 @@
 #include <openssl/md4.h>
 #endif
 #include "unicode.h"
-
-#ifdef SHA1_SSE_PARA
-#define MMX_COEF			4
-#endif
 #include "sse-intrinsics.h"
 
 #if (!defined(SHA1_SSE_PARA) && defined(MMX_COEF))
@@ -238,8 +234,12 @@ static int valid(char *ciphertext, struct fmt_main *self)
 	while (ciphertext[i] && ciphertext[i] != '#') ++i;
 	++i;
 	saltlen = enc_to_utf16(realsalt, 22, (UTF8*)strnzcpy(insalt, &ciphertext[i], l-i), l-(i+1));
-	if (saltlen < 0 || saltlen > 22)
+	if (saltlen < 0 || saltlen > 22) {
+		static int warned = 0;
+		if (warned++ == 1)
+			fprintf(stderr, "Note: One or more hashes rejected due to salt length limitation\n");
 		return 0;
+	}
 
 	// iteration count must be less than 2^16. It must fit in a UTF16 (salt[1]);
 	sscanf(&ciphertext[6], "%d", &i);
@@ -312,7 +312,7 @@ static void *get_salt(char *_ciphertext)
 	input[md4_size] = 0;
 
 	utf16len = enc_to_utf16(&out[2], 22, input, md4_size);
-	if (utf16len <= 0)
+	if (utf16len < 0)
 		utf16len = strlen16(&out[2]);
 	out[0] = utf16len << 1;
 	sscanf(&_ciphertext[6], "%d", &utf16len);
@@ -323,8 +323,11 @@ static void *get_salt(char *_ciphertext)
 
 static void *get_binary(char *ciphertext)
 {
-	static unsigned long out_[BINARY_SIZE/sizeof(unsigned long)];
-	unsigned int *out = (unsigned int*)out_;
+	static union {
+		unsigned long dummy;
+		unsigned int i[BINARY_SIZE/sizeof(unsigned int)];
+	} _out;
+	unsigned int *out = _out.i;
 	unsigned int i = 0;
 	unsigned int temp;
 

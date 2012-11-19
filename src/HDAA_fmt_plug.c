@@ -2,8 +2,8 @@
  *
  * Written by Romain Raboin. OMP and intrinsics support by magnum
  *
- * This software is Copyright © 2008 Romain Raboin - romain.raboin at
- * gmail.com, and Copyright © 2012 magnum and it is hereby released to
+ * This software is Copyright (c) 2008 Romain Raboin - romain.raboin at
+ * gmail.com, and Copyright (c) 2012 magnum and it is hereby released to
  * the general public under the following terms:  Redistribution and
  * use in source and binary forms, with or without modification, are
  * permitted.
@@ -29,7 +29,6 @@
 #include "stdint.h"
 
 #ifdef MD5_SSE_PARA
-#define MMX_COEF			4
 #define NBKEYS				(MMX_COEF * MD5_SSE_PARA)
 #elif defined(MMX_COEF)
 #define NBKEYS				MMX_COEF

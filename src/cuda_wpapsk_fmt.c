@@ -38,9 +38,9 @@ static struct fmt_tests wpapsk_tests[] = {
 
 static void cleanup()
 {
-	free(inbuffer);
-	free(outbuffer);
-	free(mic);
+	MEM_FREE(inbuffer);
+	MEM_FREE(outbuffer);
+	MEM_FREE(mic);
 }
 
 static void init(struct fmt_main *self)
@@ -67,7 +67,7 @@ static void init(struct fmt_main *self)
 	}
 
 	///Initialize CUDA
-	cuda_init(gpu_id);
+	cuda_init(cuda_gpu_id);
 }
 
 static void crypt_all(int count)

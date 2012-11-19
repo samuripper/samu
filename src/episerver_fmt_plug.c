@@ -2,7 +2,7 @@
  * 2012 by Dhiru Kholia <dhiru.kholia at gmail.com> for GSoC. Based on sample
  * code by hashcat's atom.
  *
- * This software is Copyright © 2012, Dhiru Kholia <dhiru.kholia at gmail.com>,
+ * This software is Copyright (c) 2012, Dhiru Kholia <dhiru.kholia at gmail.com>,
  * and it is hereby released to the general public under the following terms:
  * Redistribution and use in source and binary forms, with or without modification,
  * are permitted.
@@ -27,7 +27,11 @@
  * 		 hash =  sha1(salt | utf16bytes(password)), PasswordFormat == 1 *
  *
  * version == 1, EPiServer 6.x + .NET >= 4.x SHA256 hash/salt format,
- * 		 PasswordFormat == ? */
+ * 		 PasswordFormat == ?
+ *
+ * Improved performance, JimF, July 2012.
+ * Full Unicode support, magnum, August 2012.
+ */
 
 #include "sha.h"
 #include "sha2.h"
@@ -41,26 +45,34 @@
 #include "params.h"
 #include "options.h"
 #include "base64.h"
+#include "unicode.h"
 #ifdef _OPENMP
 #include <omp.h>
-#define OMP_SCALE               64
+#define OMP_SCALE               4
 #endif
 
 #define FORMAT_LABEL		"episerver"
 #define FORMAT_NAME		"EPiServer salted SHA-1/SHA-256"
 #define ALGORITHM_NAME		"32/" ARCH_BITS_STR " " SHA2_LIB
 #define BENCHMARK_COMMENT	""
-#define BENCHMARK_LENGTH	-1
+#define BENCHMARK_LENGTH	0
 #define PLAINTEXT_LENGTH	32
 #define BINARY_SIZE		32 /* larger of the two */
 #define SALT_SIZE		sizeof(struct custom_salt)
 #define MIN_KEYS_PER_CRYPT	1
-#define MAX_KEYS_PER_CRYPT	1
+#define MAX_KEYS_PER_CRYPT	16
 
 static struct fmt_tests episerver_tests[] = {
 	{"$episerver$*0*fGJ2wn/5WlzqQoDeCA2kXA==*UQgnz/vPWap9UeD8Dhaw3h/fgFA=", "testPassword"},
 	{"$episerver$*0*fGJ2wn/5WlzqQoDeCA2kXA==*uiP1YrZlVcHESbfsRt/wljwNeYU=", "sss"},
 	{"$episerver$*0*fGJ2wn/5WlzqQoDeCA2kXA==*dxTlKqnxaVHs0210VcX+48QDonA=", "notused"},
+
+	// hashes from pass_gen.pl, including some V1 data
+	{"$episerver$*0*OHdOb002Z1J6ZFhlRHRzbw==*74l+VCC9xkGP27sNLPLZLRI/O5A", "test1"},
+	{"$episerver$*0*THk5ZHhYNFdQUDV1Y0hScg==*ik+FVrPkEs6LfJU88xl5oBRoZjY", ""},
+	{"$episerver$*1*aHIza2pUY0ZkR2dqQnJrNQ==*1KPAZriqakiNvE6ML6xkUzS11QPREziCvYkJc4UtjWs","test1"},
+	{"$episerver$*1*RUZzRmNja0c5NkN0aDlMVw==*nh46rc4vkFIL0qGUrKTPuPWO6wqoESSeAxUNccEOe28","thatsworking"},
+	{"$episerver$*1*cW9DdnVVUnFwM2FobFc4dg==*Zr/nekpDxU5gjt+fzTSqm0j/twZySBBW44Csoai2Fug","test3"},
 	{NULL}
 };
 
@@ -85,6 +97,8 @@ static void init(struct fmt_main *self)
 	saved_key = mem_calloc_tiny(sizeof(*saved_key) *
 			self->params.max_keys_per_crypt, MEM_ALIGN_NONE);
 	crypt_out = mem_calloc_tiny(sizeof(*crypt_out) * self->params.max_keys_per_crypt, MEM_ALIGN_WORD);
+	if (options.utf8)
+		self->params.plaintext_length = PLAINTEXT_LENGTH * 3;
 }
 
 static int valid(char *ciphertext, struct fmt_main *self)
@@ -94,16 +108,16 @@ static int valid(char *ciphertext, struct fmt_main *self)
 
 static void *get_salt(char *ciphertext)
 {
-	char *ctcopy = strdup(ciphertext);
-	char *keeptr = ctcopy;
-	char *p;
 	static struct custom_salt cs;
+	char _ctcopy[256], *ctcopy=_ctcopy;
+	char *p;
+	strncpy(ctcopy, ciphertext, 255);
+	ctcopy[255] = 0;
 	ctcopy += 12;	/* skip over "$episerver$*" */
 	p = strtok(ctcopy, "*");
 	cs.version = atoi(p);
 	p = strtok(NULL, "*");
 	base64_decode(p, strlen(p), (char*)cs.esalt);
-	free(keeptr);
 	return (void *)&cs;
 }
 
@@ -146,30 +160,28 @@ static void crypt_all(int count)
 	int index = 0;
 #ifdef _OPENMP
 #pragma omp parallel for
-	for (index = 0; index < count; index++)
 #endif
+	for (index = 0; index < count; index++)
 	{
-		unsigned char passwordBuf[PLAINTEXT_LENGTH*2] = {0};
-		int passwordBufSize = strlen(saved_key[index]) * 2;
-		int i;
-		unsigned char c;
-		int position = 0;
-		for(i = 0; (c = saved_key[index][i]); i++) {
-			passwordBuf[position] = c;
-			position += 2;
-		}
+		unsigned char passwordBuf[PLAINTEXT_LENGTH*2+2];
+		int len;
+		len = enc_to_utf16((UTF16*)passwordBuf, PLAINTEXT_LENGTH,
+		                   (UTF8*)saved_key[index], strlen(saved_key[index]));
+		if (len < 0)
+			len = strlen16((UTF16*)saved_key[index]);
+		len <<= 1;
 		if(cur_salt->version == 0) {
 			SHA_CTX ctx;
 			SHA1_Init(&ctx);
 			SHA1_Update(&ctx, cur_salt->esalt, 16);
-			SHA1_Update(&ctx, passwordBuf, passwordBufSize);
+			SHA1_Update(&ctx, passwordBuf, len);
 			SHA1_Final((unsigned char*)crypt_out[index], &ctx);
 		}
 		else if(cur_salt->version == 1) {
 			SHA256_CTX ctx;
 			SHA256_Init(&ctx);
 			SHA256_Update(&ctx, cur_salt->esalt, 16);
-			SHA256_Update(&ctx, passwordBuf, passwordBufSize);
+			SHA256_Update(&ctx, passwordBuf, len);
 			SHA256_Final((unsigned char*)crypt_out[index], &ctx);
 		}
 	}
@@ -178,31 +190,30 @@ static void crypt_all(int count)
 static int cmp_all(void *binary, int count)
 {
 	int index = 0;
-#ifdef _OPENMP
-	for (; index < count; index++)
-#endif
-		if (!memcmp(binary, crypt_out[index], 20)) /* BUG: lesser of the two */
+	for (; index < count; index++) {
+		if (*((ARCH_WORD_32*)binary) == crypt_out[index][0])
 			return 1;
+	}
 	return 0;
 }
 
 static int cmp_one(void *binary, int index)
 {
-	return !memcmp(binary, crypt_out[index], 20); /* BUG: lesser of the two */
+	return (*((ARCH_WORD_32*)binary) == crypt_out[index][0]);
 }
 
 static int cmp_exact(char *source, int index)
 {
-	return 1;
+	void *binary = get_binary(source);
+	if(cur_salt->version == 0)
+		return !memcmp(binary, crypt_out[index], 20);
+	else
+		return !memcmp(binary, crypt_out[index], BINARY_SIZE);
 }
 
 static void episerver_set_key(char *key, int index)
 {
-	int saved_key_length = strlen(key);
-	if (saved_key_length > PLAINTEXT_LENGTH)
-		saved_key_length = PLAINTEXT_LENGTH;
-	memcpy(saved_key[index], key, saved_key_length);
-	saved_key[index][saved_key_length] = 0;
+	strcpy(saved_key[index], key);
 }
 
 static char *get_key(int index)
@@ -222,7 +233,7 @@ struct fmt_main episerver_fmt = {
 		SALT_SIZE,
 		MIN_KEYS_PER_CRYPT,
 		MAX_KEYS_PER_CRYPT,
-		FMT_CASE | FMT_8_BIT | FMT_OMP,
+		FMT_CASE | FMT_8_BIT | FMT_OMP | FMT_UNICODE | FMT_UTF8,
 		episerver_tests
 	}, {
 		init,

@@ -20,7 +20,7 @@
 
 #define FORMAT_LABEL			"mysql-sha1-opencl"
 #define FORMAT_NAME			"MySQL 4.1 double-SHA-1"
-#define ALGORITHM_NAME			"OpenCL"
+#define ALGORITHM_NAME			"OpenCL (inefficient, development use only)"
 
 #define BENCHMARK_COMMENT		""
 #define BENCHMARK_LENGTH		0
@@ -62,21 +62,21 @@ static struct fmt_tests tests[] = {
 };
 
 static void create_clobj(int kpc){
-    pinned_msha_keys = clCreateBuffer(context[gpu_id], CL_MEM_READ_WRITE | CL_MEM_ALLOC_HOST_PTR, (PLAINTEXT_LENGTH)*kpc, NULL, &ret_code);
+    pinned_msha_keys = clCreateBuffer(context[ocl_gpu_id], CL_MEM_READ_WRITE | CL_MEM_ALLOC_HOST_PTR, (PLAINTEXT_LENGTH)*kpc, NULL, &ret_code);
     HANDLE_CLERROR(ret_code, "Error creating page-locked memory");
-    mysqlsha_plain = (char*)clEnqueueMapBuffer(queue[gpu_id], pinned_msha_keys, CL_TRUE, CL_MAP_WRITE | CL_MAP_READ, 0, (PLAINTEXT_LENGTH)*kpc, 0, NULL, NULL, &ret_code);
+    mysqlsha_plain = (char*)clEnqueueMapBuffer(queue[ocl_gpu_id], pinned_msha_keys, CL_TRUE, CL_MAP_WRITE | CL_MAP_READ, 0, (PLAINTEXT_LENGTH)*kpc, 0, NULL, NULL, &ret_code);
     HANDLE_CLERROR(ret_code, "Error mapping page-locked memory mysqlsha_plain");
     memset(mysqlsha_plain, 0, PLAINTEXT_LENGTH * kpc);
     res_hashes = malloc(sizeof(cl_uint) * 4 * kpc);
-    pin_part_msha_hashes = clCreateBuffer(context[gpu_id], CL_MEM_READ_WRITE | CL_MEM_ALLOC_HOST_PTR, sizeof(cl_uint) * kpc, NULL, &ret_code);
+    pin_part_msha_hashes = clCreateBuffer(context[ocl_gpu_id], CL_MEM_READ_WRITE | CL_MEM_ALLOC_HOST_PTR, sizeof(cl_uint) * kpc, NULL, &ret_code);
     HANDLE_CLERROR(ret_code, "Error creating page-locked memory");
-    par_msha_hashes = (cl_uint *) clEnqueueMapBuffer(queue[gpu_id], pin_part_msha_hashes, CL_TRUE, CL_MAP_READ,0,sizeof(cl_uint)*kpc, 0, NULL, NULL, &ret_code);
+    par_msha_hashes = (cl_uint *) clEnqueueMapBuffer(queue[ocl_gpu_id], pin_part_msha_hashes, CL_TRUE, CL_MAP_READ,0,sizeof(cl_uint)*kpc, 0, NULL, NULL, &ret_code);
     HANDLE_CLERROR(ret_code, "Error mapping page-locked memory par_msha_hashes");
-    buf_msha_keys = clCreateBuffer(context[gpu_id], CL_MEM_READ_ONLY,(PLAINTEXT_LENGTH)*kpc, NULL, &ret_code);
+    buf_msha_keys = clCreateBuffer(context[ocl_gpu_id], CL_MEM_READ_ONLY,(PLAINTEXT_LENGTH)*kpc, NULL, &ret_code);
     HANDLE_CLERROR(ret_code, "Error creating buffer keys argument");
-    buf_msha_out = clCreateBuffer(context[gpu_id], CL_MEM_WRITE_ONLY,sizeof(cl_uint)*5*kpc, NULL, &ret_code);
+    buf_msha_out = clCreateBuffer(context[ocl_gpu_id], CL_MEM_WRITE_ONLY,sizeof(cl_uint)*5*kpc, NULL, &ret_code);
     HANDLE_CLERROR(ret_code, "Error creating buffer out argument");
-    data_info = clCreateBuffer(context[gpu_id], CL_MEM_READ_ONLY, sizeof(unsigned int) * 2, NULL, &ret_code);
+    data_info = clCreateBuffer(context[ocl_gpu_id], CL_MEM_READ_ONLY, sizeof(unsigned int) * 2, NULL, &ret_code);
     HANDLE_CLERROR(ret_code, "Error creating data_info out argument");
     HANDLE_CLERROR(clSetKernelArg(crypt_kernel, 0, sizeof(data_info), (void *) &data_info), "Error setting argument 0");
     HANDLE_CLERROR(clSetKernelArg(crypt_kernel, 1, sizeof(buf_msha_keys), (void *) &buf_msha_keys),"Error setting argument 1");
@@ -89,9 +89,9 @@ static void create_clobj(int kpc){
 static void release_clobj(void){
     cl_int ret_code;
 
-    ret_code = clEnqueueUnmapMemObject(queue[gpu_id], pin_part_msha_hashes, par_msha_hashes, 0,NULL,NULL);
+    ret_code = clEnqueueUnmapMemObject(queue[ocl_gpu_id], pin_part_msha_hashes, par_msha_hashes, 0,NULL,NULL);
     HANDLE_CLERROR(ret_code, "Error Ummapping par_msha_hashes");
-    ret_code = clEnqueueUnmapMemObject(queue[gpu_id], pinned_msha_keys, mysqlsha_plain, 0, NULL, NULL);
+    ret_code = clEnqueueUnmapMemObject(queue[ocl_gpu_id], pinned_msha_keys, mysqlsha_plain, 0, NULL, NULL);
     HANDLE_CLERROR(ret_code, "Error Ummapping mysqlsha_plain");
     ret_code = clReleaseMemObject(buf_msha_keys);
     HANDLE_CLERROR(ret_code, "Error Releasing buf_msha_keys");
@@ -103,7 +103,7 @@ static void release_clobj(void){
     HANDLE_CLERROR(ret_code, "Error Releasing pinned_msha_keys");
     ret_code = clReleaseMemObject(pin_part_msha_hashes);
     HANDLE_CLERROR(ret_code, "Error Releasing pin_part_msha_hashes");
-    free(res_hashes);
+    MEM_FREE(res_hashes);
 }
 
 /* this function could be used to calculated the best num
@@ -124,7 +124,7 @@ static void find_best_kpc(void){
         release_clobj();
 	create_clobj(num);
 	advance_cursor();
-	queue_prof = clCreateCommandQueue( context[gpu_id], devices[gpu_id], CL_QUEUE_PROFILING_ENABLE, &ret_code);
+	queue_prof = clCreateCommandQueue( context[ocl_gpu_id], devices[ocl_gpu_id], CL_QUEUE_PROFILING_ENABLE, &ret_code);
 	for (i=0; i < num; i++){
 		memcpy(&(mysqlsha_plain[i*PLAINTEXT_LENGTH]),"abacaeaf",PLAINTEXT_LENGTH);
 	}
@@ -148,7 +148,7 @@ static void find_best_kpc(void){
 		kernelExecTimeNs = ((int) (((float) (tmpTime) / num) * 10) ) ;
 		optimal_kpc = num;
 	}
-	free(tmpbuffer);
+	MEM_FREE(tmpbuffer);
     	clReleaseCommandQueue(queue_prof);
     }
     fprintf(stderr, "Optimal keys per crypt %d\n(to avoid this test on next run do export GWS=%d)\n",optimal_kpc,optimal_kpc);
@@ -182,20 +182,15 @@ static void init(struct fmt_main *self){
 
 	global_work_size = MAX_KEYS_PER_CRYPT;
 
-	opencl_init("$JOHN/msha_kernel.cl", gpu_id, platform_id);
+	opencl_init("$JOHN/msha_kernel.cl", ocl_gpu_id, platform_id);
 
 	// create kernel to execute
-	crypt_kernel = clCreateKernel(program[gpu_id], "sha1_crypt_kernel", &ret_code);
+	crypt_kernel = clCreateKernel(program[ocl_gpu_id], "sha1_crypt_kernel", &ret_code);
 	HANDLE_CLERROR(ret_code, "Error creating kernel. Double-check kernel name?");
 
-	// we run find_best_workgroup even if LWS is setted to 0
-	if( ((kpc = getenv("LWS")) == NULL) || (atoi(kpc) == 0)) {
-		create_clobj(SHA_NUM_KEYS);
-		opencl_find_best_workgroup(self);
-		release_clobj();
-	}else {
-		local_work_size = atoi(kpc);
-	}
+	create_clobj(SHA_NUM_KEYS);
+	opencl_find_best_workgroup(self);
+	release_clobj();
 
 	if( (kpc = getenv("GWS")) == NULL){
 		max_keys_per_crypt = SHA_NUM_KEYS;
@@ -254,7 +249,7 @@ static int cmp_exact(char *source, int count) {
 	unsigned int *t = (unsigned int *) binary(source);
 
 	if (!have_full_hashes){
-		clEnqueueReadBuffer(queue[gpu_id], buf_msha_out, CL_TRUE,
+		clEnqueueReadBuffer(queue[ocl_gpu_id], buf_msha_out, CL_TRUE,
 			sizeof(cl_uint) * (max_keys_per_crypt),
 			sizeof(cl_uint) * 4 * max_keys_per_crypt, res_hashes, 0,
 			NULL, NULL);
@@ -284,22 +279,22 @@ static int cmp_one(void *binary, int index){
 static void crypt_all(int count) {
         //memcpy(mysqlsha_plain,saved_key,PLAINTEXT_LENGTH*count);
 	HANDLE_CLERROR(
-	    clEnqueueWriteBuffer(queue[gpu_id], data_info, CL_TRUE, 0,
+	    clEnqueueWriteBuffer(queue[ocl_gpu_id], data_info, CL_TRUE, 0,
 	    sizeof(unsigned int) * 2, datai, 0, NULL, NULL),
 	    "failed in clEnqueueWriteBuffer data_info");
 	HANDLE_CLERROR(
-	    clEnqueueWriteBuffer(queue[gpu_id], buf_msha_keys, CL_TRUE, 0,
+	    clEnqueueWriteBuffer(queue[ocl_gpu_id], buf_msha_keys, CL_TRUE, 0,
 	    (PLAINTEXT_LENGTH) * max_keys_per_crypt, mysqlsha_plain, 0, NULL, NULL),
 	     "failed in clEnqueueWriteBuffer mysqlsha_plain");
 
 	HANDLE_CLERROR(
-	    clEnqueueNDRangeKernel(queue[gpu_id], crypt_kernel, 1, NULL,
-	    &global_work_size, &local_work_size, 0, NULL, &profilingEvent),
+	    clEnqueueNDRangeKernel(queue[ocl_gpu_id], crypt_kernel, 1, NULL,
+	    &global_work_size, &local_work_size, 0, NULL, profilingEvent),
 	      "failed in clEnqueueNDRangeKernel");
 
-	HANDLE_CLERROR(clFinish(queue[gpu_id]),"failed in clFinish");
+	HANDLE_CLERROR(clFinish(queue[ocl_gpu_id]),"failed in clFinish");
 	// read back partial hashes
-	HANDLE_CLERROR(clEnqueueReadBuffer(queue[gpu_id], buf_msha_out, CL_TRUE, 0,
+	HANDLE_CLERROR(clEnqueueReadBuffer(queue[ocl_gpu_id], buf_msha_out, CL_TRUE, 0,
 	    sizeof(cl_uint) * max_keys_per_crypt, par_msha_hashes, 0, NULL, NULL),
 	      "failed in reading data back");
 	have_full_hashes = 0;

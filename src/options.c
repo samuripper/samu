@@ -41,8 +41,9 @@
 #endif
 #ifdef CL_VERSION_1_0
 #include "common-opencl.h"
-#elif defined(HAVE_CUDA)
-extern int gpu_id;
+#endif
+#if defined(HAVE_CUDA)
+extern int cuda_gpu_id;
 #endif
 
 struct options_main options;
@@ -54,7 +55,7 @@ static struct opt_entry opt_list[] = {
 		OPT_FMT_STR_ALLOC, &options.loader.activesinglerules},
 	{"wordlist", FLG_WORDLIST_SET, FLG_CRACKING_CHK,
 		0, 0, OPT_FMT_STR_ALLOC, &options.wordlist},
-	{"loopback", FLG_LOOPBACK_SET | FLG_DUPESUPP, FLG_CRACKING_CHK,
+	{"loopback", FLG_LOOPBACK_SET, FLG_CRACKING_CHK,
 		0, 0, OPT_FMT_STR_ALLOC, &options.wordlist},
 	{"encoding", FLG_NONE, FLG_NONE,
 		0, 0, OPT_FMT_STR_ALLOC, &options.encoding},
@@ -138,6 +139,8 @@ static struct opt_entry opt_list[] = {
 		"%u", &options.force_maxlength},
 	{"max-run-time", FLG_NONE, FLG_NONE, 0, OPT_REQ_PARAM,
 		"%u", &options.max_run_time},
+	{"progress-every", FLG_NONE, FLG_NONE, 0, OPT_REQ_PARAM,
+		"%u", &options.status_interval},
 	{"regen-lost-salts", FLG_NONE, FLG_NONE, 0, OPT_REQ_PARAM,
 		"%u", &options.regen_lost_salts},
 	{"raw-always-valid", FLG_NONE, FLG_NONE, 0, OPT_REQ_PARAM,
@@ -148,7 +151,9 @@ static struct opt_entry opt_list[] = {
 #endif
 #if defined(CL_VERSION_1_0) || defined(HAVE_CUDA)
 	{"device", FLG_NONE, FLG_NONE, 0, OPT_REQ_PARAM,
-		OPT_FMT_STR_ALLOC, &options.ocl_device},
+		OPT_FMT_STR_ALLOC, &options.gpu_device},
+	{"request-vectorize", FLG_VECTORIZE, FLG_VECTORIZE, 0, FLG_SCALAR},
+	{"request-scalar", FLG_SCALAR, FLG_SCALAR, 0, FLG_VECTORIZE},
 #endif
 	{NULL}
 };
@@ -170,7 +175,6 @@ static struct opt_entry opt_list[] = {
 "Homepage: http://www.openwall.com/john/\n" \
 "\n" \
 "Usage: %s [OPTIONS] [PASSWORD-FILES]\n" \
-"--config=FILE             use FILE instead of john.conf or john.ini\n" \
 "--single[=SECTION]        \"single crack\" mode\n" \
 "--wordlist[=FILE] --stdin wordlist mode, read words from FILE or stdin\n" \
 "                  --pipe  like --stdin, but bulk reads, and allows rules\n" \
@@ -180,7 +184,7 @@ static struct opt_entry opt_list[] = {
 "                          For a full list of NAME use --list=encodings\n" \
 "--rules[=SECTION]         enable word mangling rules for wordlist modes\n" \
 "--incremental[=MODE]      \"incremental\" mode [using section MODE]\n" \
-"--markov[=options]        \"Markov\" mode (see doc/MARKOV)\n" \
+"--markov[=OPTIONS]        \"Markov\" mode (see doc/MARKOV)\n" \
 "--external=MODE           external mode or word filter\n" \
 "--stdout[=LENGTH]         just output candidate passwords [cut at LENGTH]\n" \
 "--restore[=NAME]          restore an interrupted session [called NAME]\n" \
@@ -201,12 +205,7 @@ static struct opt_entry opt_list[] = {
 
 #define JOHN_USAGE_TAIL \
 "--list=WHAT               list capabilities, see --list=help or doc/OPTIONS\n" \
-"--save-memory=LEVEL       enable memory saving, at LEVEL 1..3\n" \
-"--mem-file-size=SIZE      size threshold for wordlist preload (default 5 MB)\n" \
-"--nolog                   disables creation and writing to john.log file\n" \
-"--crack-status            emit a status line whenever a password is cracked\n" \
-"--max-run-time=N          gracefully exit after this many seconds\n" \
-"--regen-lost-salts=N      regenerate lost salts (see doc/OPTIONS)\n"
+"--save-memory=LEVEL       enable memory saving, at LEVEL 1..3\n"
 
 #define JOHN_USAGE_PLUGIN \
 "--plugin=NAME[,..]        load this (these) dynamic plugin(s)\n"
@@ -273,7 +272,7 @@ static void print_usage(char *name)
 		}
 		printf(" %s%s", label, formats_list[i] ? "" : "\n");
 	} while (formats_list[i]);
-	free(formats_list);
+	MEM_FREE(formats_list);
 
 	printf("%s", JOHN_USAGE_TAIL);
 #ifdef HAVE_DL
@@ -298,7 +297,7 @@ void opt_init(char *name, int argc, char **argv, int show_usage)
 	options.loader.max_fix_state_delay = 0;
 	options.loader.max_wordfile_memory = WORDLIST_BUFFER_DEFAULT;
 	options.force_maxkeys = options.force_maxlength = 0;
-	options.max_run_time = -2;
+	options.max_run_time = options.status_interval = -2;
 	options.dynamic_raw_hashes_always_valid = 0;
 
 	list_init(&options.passwd);
@@ -344,10 +343,12 @@ void opt_init(char *name, int argc, char **argv, int show_usage)
 #ifdef CL_VERSION_1_0
 	if (options.ocl_platform)
 		platform_id = atoi(options.ocl_platform);
+	if (options.gpu_device)
+		ocl_gpu_id = atoi(options.gpu_device);
 #endif
-#if defined(CL_VERSION_1_0) || defined(HAVE_CUDA)
-	if (options.ocl_device)
-		gpu_id = atoi(options.ocl_device);
+#ifdef HAVE_CUDA
+	if (options.gpu_device)
+		cuda_gpu_id = atoi(options.gpu_device);
 #endif
 	if (options.flags & FLG_STATUS_CHK) {
 		rec_restore_args(0);

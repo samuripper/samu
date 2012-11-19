@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-
 # -*- coding: latin-1 -*-
 """
 OleFileIO_PL:
@@ -7,7 +6,7 @@ OleFileIO_PL:
     Microsoft Compound Document File Format), such as Microsoft Office
     documents, Image Composer and FlashPix files, Outlook messages, ...
 
-version 0.22 2012-02-16 Philippe Lagadec - http://www.decalage.info
+version 0.23 2012-07-25 Philippe Lagadec - http://www.decalage.info
 
 Project website: http://www.decalage.info/python/olefileio
 
@@ -25,8 +24,8 @@ WARNING: THIS IS (STILL) WORK IN PROGRESS.
 """
 
 __author__  = "Fredrik Lundh (Secret Labs AB), Philippe Lagadec"
-__date__    = "2012-02-16"
-__version__ = '0.22'
+__date__    = "2012-07-25"
+__version__ = '0.23'
 
 #--- LICENSE ------------------------------------------------------------------
 
@@ -61,15 +60,141 @@ __version__ = '0.22'
 
 #-----------------------------------------------------------------------------
 # CHANGELOG: (only OleFileIO_PL changes compared to PIL 1.1.6)
+# 2005-05-11 v0.10 PL: - a few fixes for Python 2.4 compatibility
+#                        (all changes flagged with [PL])
+# 2006-02-22 v0.11 PL: - a few fixes for some Office 2003 documents which raise
+#                        exceptions in _OleStream.__init__()
+# 2006-06-09 v0.12 PL: - fixes for files above 6.8MB (DIFAT in loadfat)
+#                      - added some constants
+#                      - added header values checks
+#                      - added some docstrings
+#                      - getsect: bugfix in case sectors >512 bytes
+#                      - getsect: added conformity checks
+#                      - DEBUG_MODE constant to activate debug display
+# 2007-09-04 v0.13 PL: - improved/translated (lots of) comments
+#                      - updated license
+#                      - converted tabs to 4 spaces
+# 2007-11-19 v0.14 PL: - added OleFileIO._raise_defect() to adapt sensitivity
+#                      - improved _unicode() to use Python 2.x unicode support
+#                      - fixed bug in _OleDirectoryEntry
+# 2007-11-25 v0.15 PL: - added safety checks to detect FAT loops
+#                      - fixed _OleStream which didn't check stream size
+#                      - added/improved many docstrings and comments
+#                      - moved helper functions _unicode and _clsid out of
+#                        OleFileIO class
+#                      - improved OleFileIO._find() to add Unix path syntax
+#                      - OleFileIO._find() is now case-insensitive
+#                      - added get_type() and get_rootentry_name()
+#                      - rewritten loaddirectory and _OleDirectoryEntry
+# 2007-11-27 v0.16 PL: - added _OleDirectoryEntry.kids_dict
+#                      - added detection of duplicate filenames in storages
+#                      - added detection of duplicate references to streams
+#                      - added get_size() and exists() to _OleDirectoryEntry
+#                      - added isOleFile to check header before parsing
+#                      - added __all__ list to control public keywords in pydoc
+# 2007-12-04 v0.17 PL: - added _load_direntry to fix a bug in loaddirectory
+#                      - improved _unicode(), added workarounds for Python <2.3
+#                      - added set_debug_mode and -d option to set debug mode
+#                      - fixed bugs in OleFileIO.open and _OleDirectoryEntry
+#                      - added safety check in main for large or binary
+#                        properties
+#                      - allow size>0 for storages for some implementations
+# 2007-12-05 v0.18 PL: - fixed several bugs in handling of FAT, MiniFAT and
+#                        streams
+#                      - added option '-c' in main to check all streams
+# 2009-12-10 v0.19 PL: - bugfix for 32 bit arrays on 64 bits platforms
+#                        (thanks to Ben G. and Martijn for reporting the bug)
+# 2009-12-11 v0.20 PL: - bugfix in OleFileIO.open when filename is not plain str
+# 2010-01-22 v0.21 PL: - added support for big-endian CPUs such as PowerPC Macs
 # 2012-02-16 v0.22 PL: - fixed bug in getproperties, patch by chuckleberryfinn
 #                        (https://bitbucket.org/decalage/olefileio_pl/issue/7)
 #                      - added close method to OleFileIO (fixed issue #2)
+# 2012-07-25 v0.23 PL: - added support for file-like objects (patch by mete0r_kr)
 
+
+#-----------------------------------------------------------------------------
+# TODO (for version 1.0):
+# - TESTS with Linux, MacOSX, Python 1.5.2, various files, PIL, ...
+# - add underscore to each private method, to avoid their display in
+#   pydoc/epydoc documentation
+# - replace all raised exceptions with _raise_defect (at least in OleFileIO)
+# - merge code from _OleStream and OleFileIO.getsect to read sectors
+#   (maybe add a class for FAT and MiniFAT ?)
+# - add method to check all streams (follow sectors chains without storing all
+#   stream in memory, and report anomalies)
+# - use _OleDirectoryEntry.kids_dict to improve _find and _list ?
+# - fix Unicode names handling (find some way to stay compatible with Py1.5.2)
+#   => if possible avoid converting names to Latin-1
+# - review DIFAT code: fix handling of DIFSECT blocks in FAT (not stop)
+# - rewrite OleFileIO.getproperties
+# - improve docstrings to show more sample uses
+# - see also original notes and FIXME below
+# - remove all obsolete FIXMEs
+
+# IDEAS:
+# - allow _raise_defect to raise different exceptions, not only IOError
+# - provide a class with named attributes to get well-known properties of
+#   MS Office documents (title, author, ...) ?
+# - in OleFileIO._open and _OleStream, use size=None instead of 0x7FFFFFFF for
+#   streams with unknown size
+# - use arrays of int instead of long integers for FAT/MiniFAT, to improve
+#   performance and reduce memory usage ? (possible issue with values >2^31)
+# - provide tests with unittest (may need write support to create samples)
+# - move all debug code (and maybe dump methods) to a separate module, with
+#   a class which inherits OleFileIO ?
+# - fix docstrings to follow epydoc format
+# - add support for 4K sectors ?
+# - add support for big endian byte order ?
+# - create a simple OLE explorer with wxPython
+
+# FUTURE EVOLUTIONS to add write support:
+# 1) add ability to write a stream back on disk from StringIO (same size, no
+#    change in FAT/MiniFAT).
+# 2) rename a stream/storage if it doesn't change the RB tree
+# 3) use rbtree module to update the red-black tree + any rename
+# 4) remove a stream/storage: free sectors in FAT/MiniFAT
+# 5) allocate new sectors in FAT/MiniFAT
+# 6) create new storage/stream
+#-----------------------------------------------------------------------------
+
+#
+# THIS IS WORK IN PROGRESS
+#
+# The Python Imaging Library
+# $Id: OleFileIO.py 2339 2005-03-25 08:02:17Z fredrik $
+#
+# stuff to deal with OLE2 Structured Storage files.  this module is
+# used by PIL to read Image Composer and FlashPix files, but can also
+# be used to read other files of this type.
+#
+# History:
+# 1997-01-20 fl   Created
+# 1997-01-22 fl   Fixed 64-bit portability quirk
+# 2003-09-09 fl   Fixed typo in OleFileIO.loadfat (noted by Daniel Haertle)
+# 2004-02-29 fl   Changed long hex constants to signed integers
+#
+# Notes:
+# FIXME: sort out sign problem (eliminate long hex constants)
+# FIXME: change filename to use "a/b/c" instead of ["a", "b", "c"]
+# FIXME: provide a glob mechanism function (using fnmatchcase)
+#
+# Literature:
+#
+# "FlashPix Format Specification, Appendix A", Kodak and Microsoft,
+#  September 1996.
+#
+# Quotes:
+#
+# "If this document and functionality of the Software conflict,
+#  the actual functionality of the Software represents the correct
+#  functionality" -- Microsoft, in the OLE format specification
+#
 # Copyright (c) Secret Labs AB 1997.
 # Copyright (c) Fredrik Lundh 1997.
 #
 # See the README file for information on usage and redistribution.
 #
+
 #------------------------------------------------------------------------------
 
 import string, StringIO, struct, array, os.path, sys
@@ -320,7 +445,7 @@ class _OleStream(StringIO.StringIO):
     # the fat chain, and load new sectors on demand instead of
     # loading it all in one go.
 
-    def __init__(self, fp, sect, size, offset, sectorsize, fat):
+    def __init__(self, fp, sect, size, offset, sectorsize, fat, filesize):
         """
         Constructor for _OleStream class.
 
@@ -330,16 +455,12 @@ class _OleStream(StringIO.StringIO):
         offset    : offset in bytes for the first FAT or MiniFAT sector
         sectorsize: size of one sector
         fat       : array/list of sector indexes (FAT or MiniFAT)
+        filesize  : size of OLE file (for debugging)
         return    : a StringIO instance containing the OLE stream
         """
         debug('_OleStream.__init__:')
         debug('  sect=%d (%X), size=%d, offset=%d, sectorsize=%d, len(fat)=%d, fp=%s'
             %(sect,sect,size,offset,sectorsize,len(fat), repr(fp)))
-        # for debugging messages, size of file where stream is read:
-        if isinstance(fp, StringIO.StringIO):
-            filesize = len(fp.getvalue())   # file in MiniFAT
-        else:
-            filesize = os.path.getsize(fp.name) # file on disk
         #[PL] To detect malformed documents with FAT loops, we compute the
         # expected number of sectors in the stream:
         unknown_size = False
@@ -725,13 +846,24 @@ class OleFileIO:
             # file-like object
             self.fp = filename
         else:
-            # string-like object
+            # string-like object: filename of file on disk
+            #TODO: if larger than 1024 bytes, this could be the actual data => StringIO
             self.fp = open(filename, "rb")
         # old code fails if filename is not a plain string:
         #if type(filename) == type(""):
         #    self.fp = open(filename, "rb")
         #else:
         #    self.fp = filename
+        # obtain the filesize by using seek and tell, which should work on most
+        # file-like objects:
+        #TODO: do it above, using getsize with filename when possible?
+        #TODO: fix code to fail with clear exception when filesize cannot be obtained
+        self.fp.seek(0, os.SEEK_END)
+        try:
+            filesize = self.fp.tell()
+        finally:
+            self.fp.seek(0)
+        self._filesize = filesize
 
         # lists of streams in FAT and MiniFAT, to detect duplicate references
         # (list of indexes of first sectors of each stream)
@@ -853,7 +985,6 @@ class OleFileIO:
 
         # calculate the number of sectors in the file
         # (-1 because header doesn't count)
-        filesize = os.path.getsize(filename)
         self.nb_sect = ( (filesize + self.SectorSize-1) / self.SectorSize) - 1
         debug( "Number of sectors in the file: %d" % self.nb_sect )
 
@@ -1135,7 +1266,7 @@ class OleFileIO:
             self.fp.seek(self.sectorsize * (sect+1))
         except:
             debug('getsect(): sect=%X, seek=%d, filesize=%d' %
-                (sect, self.sectorsize*(sect+1), os.path.getsize(self.fp.name)))
+                (sect, self.sectorsize*(sect+1), self._filesize))
             self._raise_defect(DEFECT_FATAL, 'OLE sector index out of range')
         sector = self.fp.read(self.sectorsize)
         if len(sector) != self.sectorsize:
@@ -1237,11 +1368,12 @@ class OleFileIO:
                 self.ministream = self._open(self.root.isectStart,
                     size_ministream, force_FAT=True)
             return _OleStream(self.ministream, start, size, 0,
-                              self.minisectorsize, self.minifat)
+                              self.minisectorsize, self.minifat,
+                              self.ministream.size)
         else:
             # standard stream
             return _OleStream(self.fp, start, size, 512,
-                              self.sectorsize, self.fat)
+                              self.sectorsize, self.fat, self._filesize)
 
 
     def _list(self, files, prefix, node):
@@ -1441,7 +1573,7 @@ class OleFileIO:
                 count = i32(s, offset+4)
                 value = s[offset+8:offset+8+count]
             else:
-                value = None # everything else yields "None"
+                value = None  # everything else yields "None"
 
             # FIXME: add support for VT_VECTOR
 
@@ -1459,21 +1591,22 @@ class OleFileIO:
 # http://msdn.microsoft.com/en-us/library/dd920360%28v=office.12%29
 
 from struct import unpack
-import hashlib
 import binascii
+import StringIO
+
 
 def find_rc4_passinfo_xls(filename, stream):
     while True:
         pos = stream.tell()
         if pos >= stream.size:
-            break  #  eof
+            break  # eof
 
         type = unpack("<h", stream.read(2))[0]
         #print binascii.hexlify(type), "11"
         length = unpack("<h", stream.read(2))[0]
         data = stream.read(length)
 
-        if type == 0x2f: # FILEPASS
+        if type == 0x2f:  # FILEPASS
             if data[0:2] == "\x00\x00":  # XOR obfuscation
                 print >> sys.stderr, "%s : XOR obfuscation detected, key : %s, hash : %s " % (filename, binascii.hexlify(data[2:4]),
                         binascii.hexlify(data[4:6]))
@@ -1484,45 +1617,420 @@ def find_rc4_passinfo_xls(filename, stream):
                 verifier = data[16:32]
                 verifierHash = data[32:48]
                 return (salt, verifier, verifierHash)
-            elif data[0:4] == '\x01\x00\x02\x00' or data[0:4] =='\x01\x00\x03\x00':
-                print >> sys.stderr, "%s : RC4 CryptoAPI encryption header structure found, currently un-supported!" % filename
+            elif data[0:4] == '\x01\x00\x02\x00' or data[0:4] == '\x01\x00\x03\x00':
                 # If RC4 CryptoAPI encryption is used, certain storages and streams are stored in Encryption Stream
+                stm = StringIO.StringIO(data)
+                stm.read(2)  # unused
+                # RC4 CryptoAPI Encryption Header
+                unpack("<h", stm.read(2))[0]  # major_version
+                unpack("<h", stm.read(2))[0]  # minor_version
+                unpack("<I", stm.read(4))[0]  # encryptionFlags
+                headerLength = unpack("<I", stm.read(4))[0]
+                unpack("<I", stm.read(4))[0]  # skipFlags
+                headerLength -= 4
+                unpack("<I", stm.read(4))[0]  # sizeExtra
+                headerLength -= 4
+                unpack("<I", stm.read(4))[0]  # algId
+                headerLength -= 4
+                unpack("<I", stm.read(4))[0]  # algHashId
+                headerLength -= 4
+                keySize = unpack("<I", stm.read(4))[0]
+                if keySize == 40:
+                    typ = 3
+                else:
+                    typ = 4
+                headerLength -= 4
+                unpack("<I", stm.read(4))[0]  # providerType
+                headerLength -= 4
+                unpack("<I", stm.read(4))[0]  # unused
+                headerLength -= 4
+                unpack("<I", stm.read(4))[0]  # unused
+                headerLength -= 4
+                CSPName = stm.read(headerLength)
+                provider = CSPName.decode('utf-16').lower()
+                # print provider
+                # Encryption verifier
+                saltSize = unpack("<I", stm.read(4))[0]
+                assert(saltSize == 16)
+                salt = stm.read(saltSize)
+                encryptedVerifier = stm.read(16)
+                verifierHashSize = unpack("<I", stm.read(4))[0]
+                assert(verifierHashSize == 20)
+                encryptedVerifierHash = stm.read(verifierHashSize)
+                sys.stdout.write("%s:$oldoffice$%s*%s*%s*%s\n" % (os.path.basename(filename),
+                    typ, binascii.hexlify(salt), binascii.hexlify(encryptedVerifier),
+                binascii.hexlify(encryptedVerifierHash)))
+
     return None
+
+
+def find_doc_type(filename, stream):
+    w_ident = stream.read(2)
+    assert(w_ident == "\xec\xa5")
+    stream.read(9)  # unused
+    flags = ord(stream.read(1))
+    if (flags & 1) != 0:
+        F = 1
+    else:
+        F = 0
+    if (flags & 128) != 0:
+        M = 1
+    else:
+        M = 0
+    if F == 1 and M == 1:
+        stream.read(2)  # unused
+        i_key = stream.read(4)
+        print >> sys.stderr, "%s : XOR obfuscation detected, Password Verifier : %s" % (filename, binascii.hexlify(i_key))
+        return True
+    if F == 0:
+        print >> sys.stderr, "%s : Document is not encrypted!" % (filename)
+        return True
+
+
+def find_ppt_type(filename, stream):
+    # read CurrentUserRec's RecordHeader
+    stream.read(2)  # unused
+    unpack("<h", stream.read(2))[0]  # recType
+    unpack("<L", stream.read(4))[0]  # recLen
+    # read rest of CurrentUserRec
+    unpack("<L", stream.read(4))[0]  # size
+    unpack("<L", stream.read(4))[0]  # headerToken
+    offsetToCurrentEdit = unpack("<L", stream.read(4))[0]
+    return offsetToCurrentEdit
+
 
 def find_rc4_passinfo_doc(filename, stream):
     major_version = unpack("<h", stream.read(2))[0]
     minor_version = unpack("<h", stream.read(2))[0]
-    if major_version != 1 or minor_version != 1:
-        print >> sys.stderr, "%s : Un-supported encryption version" % filename
-        return None
 
-    data = stream.read(48)
-    salt = data[:16]
-    verifier = data[16:32]
-    verifierHash = data[32:48]
-    return (salt, verifier, verifierHash)
+    if major_version == 1 or minor_version == 1:
+        data = stream.read(48)
+        salt = data[:16]
+        verifier = data[16:32]
+        verifierHash = data[32:48]
+        return (salt, verifier, verifierHash)
+    elif major_version >= 2 and minor_version == 2:
+        # RC4 CryptoAPI Encryption Header
+        unpack("<I", stream.read(4))[0]  # encryptionFlags
+        headerLength = unpack("<I", stream.read(4))[0]
+        unpack("<I", stream.read(4))[0]  # skipFlags
+        headerLength -= 4
+        unpack("<I", stream.read(4))[0]  # sizeExtra
+        headerLength -= 4
+        unpack("<I", stream.read(4))[0]  # algId
+        headerLength -= 4
+        unpack("<I", stream.read(4))[0]  # algHashId
+        headerLength -= 4
+        unpack("<I", stream.read(4))[0]  # keySize
+        headerLength -= 4
+        unpack("<I", stream.read(4))[0]  # providerType
+        headerLength -= 4
+        unpack("<I", stream.read(4))[0]  # unused
+        headerLength -= 4
+        unpack("<I", stream.read(4))[0]  # unused
+        headerLength -= 4
+        CSPName = stream.read(headerLength)
+        provider = CSPName.decode('utf-16').lower()
+        if "strong" in provider:
+            typ = 4
+        else:
+            typ = 3
+        # Encryption verifier
+        saltSize = unpack("<I", stream.read(4))[0]
+        assert(saltSize == 16)
+        salt = stream.read(saltSize)
+        encryptedVerifier = stream.read(16)
+        verifierHashSize = unpack("<I", stream.read(4))[0]
+        assert(verifierHashSize == 20)
+        encryptedVerifierHash = stream.read(verifierHashSize)
+        if not have_summary:
+            sys.stdout.write("%s:$oldoffice$%s*%s*%s*%s\n" % (os.path.basename(filename),
+                typ, binascii.hexlify(salt), binascii.hexlify(encryptedVerifier),
+                binascii.hexlify(encryptedVerifierHash)))
+        else:
+            sys.stdout.write("%s:$oldoffice$%s*%s*%s*%s:::%s::%s\n" % (os.path.basename(filename),
+                typ, binascii.hexlify(salt), binascii.hexlify(encryptedVerifier),
+                binascii.hexlify(encryptedVerifierHash), summary, filename))
+
+    else:
+        print >> sys.stderr, "%s : Cannot find RC4 pass info, is document encrypted?" % filename
+
+
+def find_rc4_passinfo_ppt(filename, stream, offset):
+    stream.read(offset)  # unused
+    # read UserEditAtom's RecordHeader
+    stream.read(2)  # unused
+    recType = unpack("<h", stream.read(2))[0]
+    recLen = unpack("<L", stream.read(4))[0]
+    if recLen != 32:
+        print >> sys.stderr, "%s : Document is not encrypted!" % (filename)
+        return
+    if recType != 0x0FF5:
+        print >> sys.stderr, "%s : Document is corrupt!" % (filename)
+        return
+    # read reset of UserEditAtom
+    unpack("<L", stream.read(4))[0]  # lastSlideRef
+    unpack("<h", stream.read(2))[0]  # version
+    ord(stream.read(1))  # minorVersion
+    ord(stream.read(1))  # majorVersion
+    unpack("<L", stream.read(4))[0]  # offsetLastEdit
+    offsetPersistDirectory = unpack("<L", stream.read(4))[0]
+    unpack("<L", stream.read(4))[0]  # docPersistIdRef
+    unpack("<L", stream.read(4))[0]  # persistIdSeed
+    unpack("<h", stream.read(2))[0]  # lastView
+    unpack("<h", stream.read(2))[0]  # unused
+    encryptSessionPersistIdRef = unpack("<h", stream.read(2))[0]
+    # if( offset.LowPart < userAtom.offsetPersistDirectory ||
+    # userAtom.offsetPersistDirectory < userAtom.offsetLastEdit )
+    # goto CorruptFile;
+    # jump and read RecordHeader
+    stream.seek(offsetPersistDirectory, 0)
+    stream.read(2)  # unused
+    recType = unpack("<h", stream.read(2))[0]
+    recLen = unpack("<L", stream.read(4))[0]
+    # BUGGY: PersistDirectoryAtom and PersistDirectoryEntry processing
+    i = 0
+    stream.read(4)  # unused
+    while i < encryptSessionPersistIdRef:
+        i += 1
+        persistOffset = unpack("<L", stream.read(4))[0]
+    # print persistOffset
+    # go to the offset of encryption header
+    stream.seek(persistOffset, 0)
+    # read RecordHeader
+    stream.read(2)  # unused
+    recType = unpack("<h", stream.read(2))[0]
+    recLen = unpack("<L", stream.read(4))[0]
+    major_version = unpack("<h", stream.read(2))[0]
+    minor_version = unpack("<h", stream.read(2))[0]
+
+    if major_version >= 2 and minor_version == 2:
+        # RC4 CryptoAPI Encryption Header
+        unpack("<I", stream.read(4))[0]  # encryptionFlags
+        headerLength = unpack("<I", stream.read(4))[0]
+        unpack("<I", stream.read(4))[0]  # skipFlags
+        headerLength -= 4
+        unpack("<I", stream.read(4))[0]  # sizeExtra
+        headerLength -= 4
+        unpack("<I", stream.read(4))[0]  # algId
+        headerLength -= 4
+        unpack("<I", stream.read(4))[0]  # algHashId
+        headerLength -= 4
+        unpack("<I", stream.read(4))[0]  # keySize
+        headerLength -= 4
+        unpack("<I", stream.read(4))[0]  # providerType
+        headerLength -= 4
+        unpack("<I", stream.read(4))[0]
+        headerLength -= 4
+        unpack("<I", stream.read(4))[0]
+        headerLength -= 4
+        CSPName = stream.read(headerLength)
+        provider = CSPName.decode('utf-16').lower()
+        if "strong" in provider:
+            typ = 4
+        else:
+            typ = 3
+        # Encryption verifier
+        saltSize = unpack("<I", stream.read(4))[0]
+        assert(saltSize == 16)
+        salt = stream.read(saltSize)
+        encryptedVerifier = stream.read(16)
+        verifierHashSize = unpack("<I", stream.read(4))[0]
+        assert(verifierHashSize == 20)
+        encryptedVerifierHash = stream.read(verifierHashSize)
+        sys.stdout.write("%s:$oldoffice$%s*%s*%s*%s\n" % (os.path.basename(filename),
+            typ, binascii.hexlify(salt), binascii.hexlify(encryptedVerifier),
+        binascii.hexlify(encryptedVerifierHash)))
+    else:
+        print >> sys.stderr, "%s : Cannot find RC4 pass info, is document encrypted?" % filename
+
+from xml.etree.ElementTree import ElementTree
+import base64
+
+
+def process_new_office(filename):
+    # detect version of new Office used by reading "EncryptionInfo" stream
+    ole = OleFileIO(filename)
+    stream = ole.openstream("EncryptionInfo")
+    major_version = unpack("<h", stream.read(2))[0]
+    minor_version = unpack("<h", stream.read(2))[0]
+    encryptionFlags = unpack("<I", stream.read(4))[0]  # encryptionFlags
+    if encryptionFlags == 16:  # fExternal
+        print >> sys.stderr, "%s : An external cryptographic provider is not supported!" % filename
+        return -1
+
+    if major_version == 0x04 and minor_version == 0x04:
+        # Office 2010 and 2013 file detected
+        if encryptionFlags != 0x40:  # fAgile
+            print >> sys.stderr, "%s : The encryption flags are not consistent with the encryption type\n" % filename
+            return -2
+
+        # rest of the data is in XML format
+        data = StringIO.StringIO(stream.read())
+        tree = ElementTree()
+        tree.parse(data)
+
+        for node in tree.getiterator('{http://schemas.microsoft.com/office/2006/keyEncryptor/password}encryptedKey'):
+            spinCount = node.attrib.get("spinCount")
+            assert(spinCount)
+            saltSize = node.attrib.get("saltSize")
+            assert(saltSize)
+            blockSize = node.attrib.get("blockSize")
+            assert(blockSize)
+            keyBits = node.attrib.get("keyBits")
+            hashAlgorithm = node.attrib.get("hashAlgorithm")
+            if hashAlgorithm == "SHA1":
+                version = 2010
+            elif hashAlgorithm == "SHA512":
+                version = 2013
+            else:
+                print >> sys.stderr, "%s uses un-supported hashing algorithm %s, please file a bug! \n" % (filename, hashAlgorithm)
+                return -3
+            cipherAlgorithm = node.attrib.get("cipherAlgorithm")
+            if not cipherAlgorithm.find("AES") > -1:
+                print >> sys.stderr, "%s uses un-supported cipher algorithm %s, please file a bug! \n" % (filename, cipherAlgorithm)
+                return -4
+
+            saltValue = node.attrib.get("saltValue")
+            assert(saltValue)
+            encryptedVerifierHashInput = node.attrib.get("encryptedVerifierHashInput")
+            encryptedVerifierHashValue = node.attrib.get("encryptedVerifierHashValue")
+            encryptedVerifierHashValue = binascii.hexlify(base64.decodestring(encryptedVerifierHashValue))
+
+            print "%s:$office$*%d*%d*%d*%d*%s*%s*%s" % (os.path.basename(filename), version,
+                    int(spinCount), int(keyBits), int(saltSize), binascii.hexlify(base64.decodestring(saltValue)),
+                    binascii.hexlify(base64.decodestring(encryptedVerifierHashInput)), encryptedVerifierHashValue[0:64])
+            return 0
+    else:
+        # Office 2007 file detected, process CryptoAPI Encryption Header
+        stm = stream
+        headerLength = unpack("<I", stm.read(4))[0]
+        unpack("<I", stm.read(4))[0]  # skipFlags
+        headerLength -= 4
+        unpack("<I", stm.read(4))[0]  # sizeExtra
+        headerLength -= 4
+        unpack("<I", stm.read(4))[0]  # algId
+        headerLength -= 4
+        unpack("<I", stm.read(4))[0]  # algHashId
+        headerLength -= 4
+        keySize = unpack("<I", stm.read(4))[0]
+        headerLength -= 4
+        unpack("<I", stm.read(4))[0]  # providerType
+        headerLength -= 4
+        unpack("<I", stm.read(4))[0]  # unused
+        headerLength -= 4
+        unpack("<I", stm.read(4))[0]  # unused
+        headerLength -= 4
+        CSPName = stm.read(headerLength)
+        provider = CSPName.decode('utf-16').lower()
+        assert(provider)
+        # print provider
+        # Encryption verifier
+        saltSize = unpack("<I", stm.read(4))[0]
+        assert(saltSize == 16)
+        salt = stm.read(saltSize)
+        encryptedVerifier = stm.read(16)
+        verifierHashSize = unpack("<I", stm.read(4))[0]
+        encryptedVerifierHash = stm.read(verifierHashSize)
+
+        print "%s:$office$*%d*%d*%d*%d*%s*%s*%s" % (os.path.basename(filename), 2007, verifierHashSize, keySize, saltSize,
+                binascii.hexlify(salt), binascii.hexlify(encryptedVerifier), binascii.hexlify(encryptedVerifierHash)[0:64])
+
+
+have_summary = False
+summary = []
+
+import re
+import string
+
+
+def remove_html_tags(data):
+    p = re.compile(r'<.*?>', re.DOTALL)
+    return p.sub('', data)
+
+
+def remove_extra_spaces(data):
+    p = re.compile(r'\s+')
+    return p.sub(' ', data)
+
 
 def process_file(filename):
 
     # Test if a file is an OLE container:
-    if not isOleFile(filename):
-        print >> sys.stderr, "%s : Invalid OLE file" % filename
-        return 1
+    try:
+        if not isOleFile(filename):
+            print >> sys.stderr, "%s : Invalid OLE file" % filename
+            return 1
+    except Exception, e:
+        print >> sys.stderr, "%s : OLE check failed, %s " % (filename, str(e))
+        return 2
 
     # Open OLE file:
     ole = OleFileIO(filename)
 
     stream = None
+
+    # print ole.listdir()
+    # find "summary" streams
+    global have_summary, summary
+    have_summary = False
+    summary = []
+
+    for streamname in ole.listdir():
+        if streamname[-1][0] == "\005":
+            have_summary = True
+            props = ole.getproperties(streamname)
+            props = props.items()
+            props.sort()
+            for k, v in props:
+                if v is None:
+                    continue
+                binary = False
+                if isinstance(v, basestring):
+                    v = remove_html_tags(v)
+                    v = v.replace(":", "")
+                    v = remove_extra_spaces(v)
+                    # binary filter
+                    v = filter(lambda x: x in string.printable, v)
+                    # length filter
+                    words = str(v).split()
+                    words = filter(lambda x: len(x) < 20, words)
+                    v = " ".join(words)
+                    #[PL]: avoid to display too large or binary values:
+                    #if len(v) > 50:
+                    #    v = v[:50]
+                    # quick and dirty binary check:
+                    for c in (1, 2, 3, 4, 5, 6, 7, 11, 12, 14, 15, 16, 17, 18, 19, 20,
+                            21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31):
+                        if chr(c) in v:
+                            v = '(binary data)'
+                            binary = True
+                            break
+                if not binary:
+                    summary.append(str(v))
+    summary = " ".join(summary)
+    summary = remove_extra_spaces(summary)
+
+    if ["EncryptionInfo"] in ole.listdir():
+        # process Office 2003 / 2010 / 2013 files
+        return process_new_office(filename)
     if ["Workbook"] in ole.listdir():
         stream = "Workbook"
     elif ["WordDocument"] in ole.listdir():
         stream = "1Table"
+    elif ["PowerPoint Document"] in ole.listdir():
+        stream = "Current User"
     else:
         print >> sys.stderr, "%s : No supported streams found" % filename
         return 2
 
-    workbookStream = ole.openstream(stream)
-    if workbookStream == None:
+    try:
+        workbookStream = ole.openstream(stream)
+    except:
+        print >> sys.stderr, "%s : stream %s not found!" % (filename, stream)
+        return 2
+
+    if workbookStream is None:
         print >> sys.stderr, "%s : Error opening stream, %s" % filename
         (filename, stream)
         return 3
@@ -1530,21 +2038,34 @@ def process_file(filename):
     if stream == "Workbook":
         typ = 0
         passinfo = find_rc4_passinfo_xls(filename, workbookStream)
-        if passinfo == None:
-            print >> sys.stderr, "%s : Cannot find RC4 pass info, is document encrypted?" % filename
+        if passinfo is None:
             return 4
-
-    else:
+    elif stream == "1Table":
         typ = 1
-        passinfo = find_rc4_passinfo_doc(filename, workbookStream)
-        if passinfo == None:
-            print >> sys.stderr, "%s : Cannot find RC4 pass info, is document encrypted?" % filename
-            return 4
+        sdoc = ole.openstream("WordDocument")
+        ret = find_doc_type(filename, sdoc)
+        if not ret:
+            passinfo = find_rc4_passinfo_doc(filename, workbookStream)
+            if passinfo is None:
+                return 4
+        else:
+            return 5
+    else:
+        sppt = ole.openstream("Current User")
+        offset = find_ppt_type(filename, sppt)
+        sppt = ole.openstream("PowerPoint Document")
+        find_rc4_passinfo_ppt(filename, sppt, offset)
+        return 6
 
     (salt, verifier, verifierHash) = passinfo
-    sys.stdout.write("%s:$oldoffice$%s*%s*%s*%s\n" % (os.path.basename(filename),
-        typ, binascii.hexlify(salt), binascii.hexlify(verifier),
-        binascii.hexlify(verifierHash)))
+    if not have_summary:
+        sys.stdout.write("%s:$oldoffice$%s*%s*%s*%s\n" % (os.path.basename(filename),
+            typ, binascii.hexlify(salt), binascii.hexlify(verifier),
+            binascii.hexlify(verifierHash)))
+    else:
+        sys.stdout.write("%s:$oldoffice$%s*%s*%s*%s:::%s::%s\n" % (os.path.basename(filename),
+            typ, binascii.hexlify(salt), binascii.hexlify(verifier),
+            binascii.hexlify(verifierHash), summary, filename))
 
     workbookStream.close()
     ole.close()

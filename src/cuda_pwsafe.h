@@ -1,5 +1,5 @@
 /*
-* This software is Copyright (c) 2012 Lukas Odzioba <ukasz@openwall.net>
+* This software is Copyright (c) 2012 Lukas Odzioba <ukasz at openwall.net>
 * and it is hereby released to the general public under the following terms:
 * Redistribution and use in source and binary forms, with or without modification, are permitted.
 */
@@ -27,7 +27,7 @@
     (((n) << 24) | (((n) & 0xff00) << 8) | (((n) >> 8) & 0xff00) | ((n) >> 24))
 
 typedef struct {
-        uint8_t v[15];
+        uint8_t v[32];
         uint8_t length;
 } pwsafe_pass;
 

@@ -60,13 +60,10 @@
     (((n) << 24) | (((n) & 0xff00) << 8) | (((n) >> 8) & 0xff00) | ((n) >> 24))
 
 
-typedef struct
-{
-	unsigned char username[MAX_SALT_LENGTH+1];
-
+typedef struct {
 	unsigned int length;
-
-} 	ms_cash2_salt;
+	unsigned char username[MAX_SALT_LENGTH+1];
+} ms_cash2_salt;
 
 
 
@@ -208,7 +205,7 @@ static void init(struct fmt_main *self)
 
 	memset(dcc2_hash_host,0,4*sizeof(cl_uint)*MAX_KEYS_PER_CRYPT);
 
-	select_device(platform_id,gpu_id);
+	select_device(platform_id,ocl_gpu_id);
 	///Select devices select_device(int platform_no, int device_no). You may select multiple devices for faster cracking spped. Please See common_opencl_pbkdf2.h
 	//select_device(1,0);
 	//select_device(0,0);
@@ -281,9 +278,9 @@ static void DCC(unsigned char *salt,unsigned char *username,unsigned int usernam
 
 static void cleanup()
 {
-	free(dcc_hash_host);
+	MEM_FREE(dcc_hash_host);
 
-	free(dcc2_hash_host);
+	MEM_FREE(dcc2_hash_host);
 
 	clean_all_buffer();
 
@@ -324,8 +321,12 @@ static int valid(char *ciphertext,struct fmt_main *self)
 
 	while (*pos != '#')
 	      {
-		if(saltlength==(MAX_SALT_LENGTH))
-		return 0;
+		      if(saltlength==(MAX_SALT_LENGTH)) {
+			      static int warned = 0;
+			      if (warned++ == 1)
+				      fprintf(stderr, "Note: One or more hashes rejected due to salt length limitation\n");
+			      return 0;
+		      }
 
 		saltlength++;
 		pos++;
@@ -380,14 +381,13 @@ static void *binary(char *ciphertext)
 static void *salt(char *ciphertext)
 {
 	static ms_cash2_salt salt;
-
 	unsigned int length;
+	char *pos;
 
-	char *pos ;
+	memset(&salt, 0, sizeof(salt));
 
-	length=0;
-
-	pos=ciphertext + strlen(MSCASH2_PREFIX);
+	length = 0;
+	pos = ciphertext + strlen(MSCASH2_PREFIX);
 
 	while (*pos != '#')
 	      {
@@ -398,7 +398,6 @@ static void *salt(char *ciphertext)
 	      }
 
 	salt.username[length] = 0;
-
 	salt.length=length;
 
 	return &salt;

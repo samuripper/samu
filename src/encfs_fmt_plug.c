@@ -1,7 +1,7 @@
 /* EncFS cracker patch for JtR. Hacked together during July of 2012
  * by Dhiru Kholia <dhiru at openwall.com>
  *
- * This software is Copyright © 2011, Dhiru Kholia <dhiru.kholia at gmail.com>,
+ * This software is Copyright (c) 2011, Dhiru Kholia <dhiru.kholia at gmail.com>,
  * and it is hereby released to the general public under the following terms:
  * Redistribution and use in source and binary forms, with or without modification,
  * are permitted. */
@@ -19,7 +19,7 @@
 #include "options.h"
 #ifdef _OPENMP
 #include <omp.h>
-#define OMP_SCALE               4
+#define OMP_SCALE               1
 #endif
 #include <string.h>
 #include "arch.h"
@@ -35,7 +35,9 @@
 #define BENCHMARK_LENGTH    -1001
 #define PLAINTEXT_LENGTH    32
 #define BINARY_SIZE         0
+#define BINARY_ALIGN        1
 #define SALT_SIZE           sizeof(struct custom_salt)
+#define SALT_ALIGN          DEFAULT_ALIGN
 #define MIN_KEYS_PER_CRYPT  1
 #define MAX_KEYS_PER_CRYPT  1
 
@@ -68,8 +70,6 @@ static struct fmt_tests encfs_tests[] = {
 	{NULL}
 };
 
-struct fmt_main fmt_encfs;
-
 #ifdef DEBUG
 static void print_hex(unsigned char *str, int len)
 {
@@ -80,7 +80,7 @@ static void print_hex(unsigned char *str, int len)
 }
 #endif
 
-void setIVec( unsigned char *ivec, uint64_t seed,
+static void setIVec( unsigned char *ivec, uint64_t seed,
         unsigned char *key)
 {
 	unsigned char md[EVP_MAX_MD_SIZE];
@@ -100,6 +100,7 @@ void setIVec( unsigned char *ivec, uint64_t seed,
 	HMAC_Update( &mac_ctx, ivec, cur_salt->ivLength );
 	HMAC_Update( &mac_ctx, md, 8 );
 	HMAC_Final( &mac_ctx, md, &mdLen );
+	HMAC_CTX_cleanup(&mac_ctx);
 	memcpy( ivec, md, cur_salt->ivLength );
 }
 
@@ -111,7 +112,7 @@ static void unshuffleBytes(unsigned char *buf, int size)
 		buf[i] ^= buf[i-1];
 }
 
-int MIN_(int a, int b)
+static int MIN_(int a, int b)
 {
 	return (a < b) ? a : b;
 }
@@ -158,6 +159,7 @@ static uint64_t _checksum_64(unsigned char *key,
 		HMAC_Update( &mac_ctx, h, 8 );
 	}
 	HMAC_Final( &mac_ctx, md, &mdLen );
+	HMAC_CTX_cleanup(&mac_ctx);
 	// chop this down to a 64bit value..
 	for(i=0; i<(mdLen-1); ++i)
 		h[i%8] ^= (unsigned char)(md[i]);
@@ -177,7 +179,7 @@ static uint64_t MAC_64( const unsigned char *data, int len,
 	return tmp;
 }
 
-unsigned int MAC_32( unsigned char *src, int len,
+static unsigned int MAC_32( unsigned char *src, int len,
 		unsigned char *key )
 {
 	uint64_t *chainedIV = NULL;
@@ -210,6 +212,7 @@ int streamDecode(unsigned char *buf, int size,
 	EVP_DecryptInit_ex( &stream_dec, NULL, NULL, NULL, ivec);
 	EVP_DecryptUpdate( &stream_dec, buf, &dstLen, buf, size );
 	EVP_DecryptFinal_ex( &stream_dec, buf+dstLen, &tmpLen );
+	EVP_CIPHER_CTX_cleanup(&stream_dec);
 
 	unshuffleBytes( buf, size );
 	dstLen += tmpLen;
@@ -218,7 +221,6 @@ int streamDecode(unsigned char *buf, int size,
 
 	return 1;
 }
-
 
 static void init(struct fmt_main *self)
 {
@@ -235,9 +237,9 @@ static void init(struct fmt_main *self)
 		    "but running with an older version -\n"
 		    "disabling OpenMP for SSH because of thread-safety issues "
 		    "of older OpenSSL\n");
-		fmt_encfs.params.min_keys_per_crypt =
-		    fmt_encfs.params.max_keys_per_crypt = 1;
-		fmt_encfs.params.flags &= ~FMT_OMP;
+		self->params.min_keys_per_crypt =
+		    self->params.max_keys_per_crypt = 1;
+		self->params.flags &= ~FMT_OMP;
 	}
 	else {
 		int omp_t = 1;
@@ -307,7 +309,7 @@ static void *get_salt(char *ciphertext)
 			atoi16[ARCH_INDEX(p[i * 2 + 1])];
 
 	cs.ivLength = EVP_CIPHER_iv_length( cs.blockCipher );
-	free(keeptr);
+	MEM_FREE(keeptr);
 	return (void *) &cs;
 }
 
@@ -390,13 +392,16 @@ struct fmt_main fmt_encfs = {
 		BENCHMARK_LENGTH,
 		PLAINTEXT_LENGTH,
 		BINARY_SIZE,
+#if FMT_MAIN_VERSION > 9
+		BINARY_ALIGN,
+#endif
 		SALT_SIZE,
+#if FMT_MAIN_VERSION > 9
+		SALT_ALIGN,
+#endif
 		MIN_KEYS_PER_CRYPT,
 		MAX_KEYS_PER_CRYPT,
-#if defined(_OPENMP) && OPENSSL_VERSION_NUMBER >= 0x10000000
-		FMT_OMP |
-#endif
-		FMT_CASE | FMT_8_BIT,
+		FMT_CASE | FMT_8_BIT | FMT_OMP,
 		encfs_tests
 	}, {
 		init,
@@ -405,6 +410,9 @@ struct fmt_main fmt_encfs = {
 		fmt_default_split,
 		fmt_default_binary,
 		get_salt,
+#if FMT_MAIN_VERSION > 9
+		fmt_default_source,
+#endif
 		{
 			fmt_default_binary_hash
 		},

@@ -133,10 +133,10 @@ static char *nethalflm_prepare(char *split_fields[10], struct fmt_main *self)
 
 	if (nethalflm_valid(tmp,self)) {
 		char *cp2 = str_alloc_copy(tmp);
-		free(tmp);
+		MEM_FREE(tmp);
 		return cp2;
 	}
-	free(tmp);
+	MEM_FREE(tmp);
 	return split_fields[1];
 }
 
@@ -234,13 +234,11 @@ static void nethalflm_set_key(char *key, int index)
 {
 	const unsigned char magic[] = {0x4b, 0x47, 0x53, 0x21, 0x40, 0x23, 0x24, 0x25};
 	DES_key_schedule ks;
-	int i = 0;
 
 	strncpy((char *)saved_plain[index], key, sizeof(saved_plain[index]));
 
 	/* Upper-case password */
-	for(; i<PLAINTEXT_LENGTH && saved_plain[index][i] != 0 ; i++)
-		saved_plain[index][i] = CP_up[saved_plain[index][i]];
+	enc_strupper((char *)saved_plain[index]);
 
 	/* Generate first 8-bytes of LM hash */
 	setup_des_key(saved_plain[index], &ks);

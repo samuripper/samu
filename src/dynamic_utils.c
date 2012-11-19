@@ -3,7 +3,7 @@
  * in 2009-2012. No copyright is claimed, and the software is hereby
  * placed in the public domain. In case this attempt to disclaim
  * copyright and place the software in the public domain is deemed
- * null and void, then the software is Copyright � 2009 Jim Fougeron
+ * null and void, then the software is Copyright (c) 2009 Jim Fougeron
  * and it is hereby released to the general public under the following
  * terms:
  *
@@ -19,7 +19,8 @@
  *
  * Renamed and changed from dynamic* to dynamic*.  We handle MD5 and SHA1
  * at the present time.  More crypt types 'may' be added later.
- *
+ * Added SHA2 (SHA224, SHA256, SHA384, SHA512), GOST, Whirlpool crypt types.
+ * Whirlpool only if OPENSSL_VERSION_NUMBER >= 0x10000000
  */
 
 #include <string.h>

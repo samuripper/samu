@@ -97,7 +97,7 @@ static void release_all(void)
 	HANDLE_CLERROR(clReleaseMemObject(mem_in), "Release mem in");
 	HANDLE_CLERROR(clReleaseMemObject(mem_setting), "Release mem setting");
 	HANDLE_CLERROR(clReleaseMemObject(mem_out), "Release mem out");
-	HANDLE_CLERROR(clReleaseCommandQueue(queue[gpu_id]), "Release Queue");
+	HANDLE_CLERROR(clReleaseCommandQueue(queue[ocl_gpu_id]), "Release Queue");
 }
 
 static void setIVec( unsigned char *ivec, uint64_t seed,
@@ -120,6 +120,7 @@ static void setIVec( unsigned char *ivec, uint64_t seed,
 	HMAC_Update( &mac_ctx, ivec, cur_salt->ivLength );
 	HMAC_Update( &mac_ctx, md, 8 );
 	HMAC_Final( &mac_ctx, md, &mdLen );
+	HMAC_CTX_cleanup(&mac_ctx);
 	memcpy( ivec, md, cur_salt->ivLength );
 }
 
@@ -178,6 +179,7 @@ static uint64_t _checksum_64(unsigned char *key,
 		HMAC_Update( &mac_ctx, h, 8 );
 	}
 	HMAC_Final( &mac_ctx, md, &mdLen );
+	HMAC_CTX_cleanup(&mac_ctx);
 	// chop this down to a 64bit value..
 	for(i=0; i<(mdLen-1); ++i)
 		h[i%8] ^= (unsigned char)(md[i]);
@@ -230,6 +232,7 @@ static int streamDecode(unsigned char *buf, int size,
 	EVP_DecryptInit_ex( &stream_dec, NULL, NULL, NULL, ivec);
 	EVP_DecryptUpdate( &stream_dec, buf, &dstLen, buf, size );
 	EVP_DecryptFinal_ex( &stream_dec, buf+dstLen, &tmpLen );
+	EVP_CIPHER_CTX_cleanup(&stream_dec);
 
 	unshuffleBytes( buf, size );
 	dstLen += tmpLen;
@@ -242,20 +245,30 @@ static int streamDecode(unsigned char *buf, int size,
 static void init(struct fmt_main *self)
 {
 	cl_int cl_error;
+	char *temp;
 
-	global_work_size = MAX_KEYS_PER_CRYPT;
+	if ((temp = getenv("GWS")))
+		global_work_size = atoi(temp);
+
+	if (!global_work_size)
+		global_work_size = MAX_KEYS_PER_CRYPT;
+
+	self->params.min_keys_per_crypt = self->params.max_keys_per_crypt = global_work_size;
 
 	inbuffer =
 	    (encfs_password *) malloc(sizeof(encfs_password) *
-	    MAX_KEYS_PER_CRYPT);
+	    global_work_size);
 	outbuffer =
-	    (encfs_hash *) malloc(sizeof(encfs_hash) * MAX_KEYS_PER_CRYPT);
+	    (encfs_hash *) malloc(sizeof(encfs_hash) * global_work_size);
+
+	insize = sizeof(encfs_password) * global_work_size;
+	outsize = sizeof(encfs_hash) * global_work_size;
 
 	/* Zeroize the lengths in case crypt_all() is called with some keys still
 	 * not set.  This may happen during self-tests. */
 	{
 		int i;
-		for (i = 0; i < MAX_KEYS_PER_CRYPT; i++)
+		for (i = 0; i < global_work_size; i++)
 			inbuffer[i].length = 0;
 	}
 
@@ -264,22 +277,22 @@ static void init(struct fmt_main *self)
 	cracked = mem_calloc_tiny(cracked_size, MEM_ALIGN_WORD);
 
 	//listOpenCLdevices();
-	opencl_init("$JOHN/encfs_kernel.cl", gpu_id, platform_id);
+	opencl_init("$JOHN/encfs_kernel.cl", ocl_gpu_id, platform_id);
 	/// Alocate memory
 	mem_in =
-	    clCreateBuffer(context[gpu_id], CL_MEM_READ_ONLY, insize, NULL,
+	    clCreateBuffer(context[ocl_gpu_id], CL_MEM_READ_ONLY, insize, NULL,
 	    &cl_error);
-	HANDLE_CLERROR(cl_error, "Error alocating mem in");
+	HANDLE_CLERROR(cl_error, "Error allocating mem in");
 	mem_setting =
-	    clCreateBuffer(context[gpu_id], CL_MEM_READ_ONLY, settingsize,
+	    clCreateBuffer(context[ocl_gpu_id], CL_MEM_READ_ONLY, settingsize,
 	    NULL, &cl_error);
-	HANDLE_CLERROR(cl_error, "Error alocating mem setting");
+	HANDLE_CLERROR(cl_error, "Error allocating mem setting");
 	mem_out =
-	    clCreateBuffer(context[gpu_id], CL_MEM_WRITE_ONLY, outsize, NULL,
+	    clCreateBuffer(context[ocl_gpu_id], CL_MEM_WRITE_ONLY, outsize, NULL,
 	    &cl_error);
-	HANDLE_CLERROR(cl_error, "Error alocating mem out");
+	HANDLE_CLERROR(cl_error, "Error allocating mem out");
 
-	crypt_kernel = clCreateKernel(program[gpu_id], "encfs", &cl_error);
+	crypt_kernel = clCreateKernel(program[ocl_gpu_id], "encfs", &cl_error);
 	HANDLE_CLERROR(cl_error, "Error creating kernel");
 	HANDLE_CLERROR(clSetKernelArg(crypt_kernel, 0, sizeof(mem_in),
 		&mem_in), "Error while setting mem_in kernel argument");
@@ -288,6 +301,7 @@ static void init(struct fmt_main *self)
 	HANDLE_CLERROR(clSetKernelArg(crypt_kernel, 2, sizeof(mem_setting),
 		&mem_setting), "Error while setting mem_salt kernel argument");
 	opencl_find_best_workgroup(self);
+	fprintf(stderr, "Local worksize (LWS) %d, Global worksize (GWS) %d\n", (int)local_work_size, (int)global_work_size);
 
 	atexit(release_all);
 }
@@ -345,7 +359,7 @@ static void *get_salt(char *ciphertext)
 			atoi16[ARCH_INDEX(p[i * 2 + 1])];
 
 	cs.ivLength = EVP_CIPHER_iv_length( cs.blockCipher );
-	free(keeptr);
+	MEM_FREE(keeptr);
 	return (void *) &cs;
 }
 
@@ -384,24 +398,24 @@ static void crypt_all(int count)
 {
 	int index;
 	/// Copy data to gpu
-	HANDLE_CLERROR(clEnqueueWriteBuffer(queue[gpu_id], mem_in, CL_FALSE, 0,
+	HANDLE_CLERROR(clEnqueueWriteBuffer(queue[ocl_gpu_id], mem_in, CL_FALSE, 0,
 		insize, inbuffer, 0, NULL, NULL), "Copy data to gpu");
-	HANDLE_CLERROR(clEnqueueWriteBuffer(queue[gpu_id], mem_setting,
+	HANDLE_CLERROR(clEnqueueWriteBuffer(queue[ocl_gpu_id], mem_setting,
 		CL_FALSE, 0, settingsize, &currentsalt, 0, NULL, NULL),
 	    "Copy setting to gpu");
 
 	/// Run kernel
-	HANDLE_CLERROR(clEnqueueNDRangeKernel(queue[gpu_id], crypt_kernel, 1,
-		NULL, &global_work_size, &local_work_size, 0, NULL, &profilingEvent),
+	HANDLE_CLERROR(clEnqueueNDRangeKernel(queue[ocl_gpu_id], crypt_kernel, 1,
+		NULL, &global_work_size, &local_work_size, 0, NULL, profilingEvent),
 	    "Run kernel");
-	HANDLE_CLERROR(clFinish(queue[gpu_id]), "clFinish");
+	HANDLE_CLERROR(clFinish(queue[ocl_gpu_id]), "clFinish");
 
 	/// Read the result back
-	HANDLE_CLERROR(clEnqueueReadBuffer(queue[gpu_id], mem_out, CL_FALSE, 0,
+	HANDLE_CLERROR(clEnqueueReadBuffer(queue[ocl_gpu_id], mem_out, CL_FALSE, 0,
 		outsize, outbuffer, 0, NULL, NULL), "Copy result back");
 
 	/// Await completion of all the above
-	HANDLE_CLERROR(clFinish(queue[gpu_id]), "clFinish");
+	HANDLE_CLERROR(clFinish(queue[ocl_gpu_id]), "clFinish");
 
 #ifdef _OPENMP
 #pragma omp parallel for
